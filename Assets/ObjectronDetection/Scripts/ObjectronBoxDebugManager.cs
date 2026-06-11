@@ -54,6 +54,7 @@ namespace QuestObjectron
         private BoxDebugState m_state = BoxDebugState.Booting;
         private Coroutine m_pipeline;
         private int m_frameId;
+        private bool m_shutdownForSceneExit;
 
         public BoxDebugState State => m_visuals != null && m_visuals.IsLocalized
             ? BoxDebugState.Localized
@@ -66,6 +67,8 @@ namespace QuestObjectron
 
         private void Awake()
         {
+            ObjectronSessionCleanup.BeginFreshSession();
+            m_shutdownForSceneExit = false;
             if (m_placementOptions == null)
             {
                 m_placementOptions = new ObjectronPlacementOptions();
@@ -138,11 +141,27 @@ namespace QuestObjectron
             TryControllerInput();
         }
 
-        private void OnDestroy()
+        public void ShutdownForSceneExit()
         {
+            if (m_shutdownForSceneExit)
+            {
+                return;
+            }
+
+            m_shutdownForSceneExit = true;
+            m_visuals?.Clear();
+            m_lastCorners = null;
+            m_lastScale = default;
+            m_lastTranslation = default;
+            m_lastRotationEuler = default;
+            m_liveDetectionCount = 0;
+            m_frameId = 0;
+            m_state = BoxDebugState.Booting;
+
             if (m_pipeline != null)
             {
                 StopCoroutine(m_pipeline);
+                m_pipeline = null;
             }
 
             if (m_objectronGraph != null && m_runningMode == RunningMode.Async)
@@ -150,9 +169,27 @@ namespace QuestObjectron
                 m_objectronGraph.OnLiftedObjectsOutput -= OnLiftedObjectsAsync;
             }
 
+            lock (m_pendingLock)
+            {
+                m_hasPendingFrame = false;
+                m_pendingFrame = null;
+            }
+
             m_framePoses.Clear();
             m_graphReady = false;
             m_objectronGraph?.Stop();
+
+            if (m_imageSource != null && ImageSourceProvider.ImageSource == m_imageSource)
+            {
+                ImageSourceProvider.ImageSource = null;
+            }
+
+            QuestObjectronLogger.Boot("box_debug_shutdown");
+        }
+
+        private void OnDestroy()
+        {
+            ShutdownForSceneExit();
         }
 
         public void CaptureAndDetect()

@@ -22,15 +22,6 @@ namespace QuestObjectron
         private const float SameCupCenterRadiusM = 0.15f;
         private const int MaxLocalizedCups = 3;
 
-        private sealed class LocalizedCup
-        {
-            public int ObjectId;
-            public PlacementMethod Method;
-            public Vector3[] Corners;
-            public ObjectAnnotation Annotation;
-            public ObjectronPlacementDebugReport? DebugReport;
-        }
-
         [Header("Meta / MediaPipe")]
         [SerializeField] private PassthroughCameraAccess m_cameraAccess;
         [SerializeField] private PassthroughImageSource m_imageSource;
@@ -70,8 +61,9 @@ namespace QuestObjectron
         private string m_lastPlacementMethod = "—";
         private List<Vector3[]> m_lastWorldBoxes;
         private ObjectronPinSnapshot m_lastPinSnapshot;
-        private readonly List<LocalizedCup> m_localizedCups = new();
+        [NonSerialized] private List<ObjectronLocalizedCupState> m_localizedCups = new();
         private int m_lastLoggedLocalizedCount = -1;
+        private bool m_shutdownForSceneExit;
 
         public int LocalizedCupCount => m_localizedCups.Count;
         public bool Scanning => m_localizedCups.Count < MaxLocalizedCups;
@@ -207,6 +199,9 @@ namespace QuestObjectron
 
         private void Awake()
         {
+            ObjectronSessionCleanup.BeginFreshSession();
+            m_shutdownForSceneExit = false;
+            m_localizedCups ??= new List<ObjectronLocalizedCupState>();
             QuestObjectronLogger.Boot($"version={Application.version} unity={Application.unityVersion} platform={Application.platform}");
             if (m_placementOptions == null)
             {
@@ -214,6 +209,10 @@ namespace QuestObjectron
             }
 
             m_placementOptions.CompensateHeadRoll = true;
+            m_placementOptions.ConstrainUprightOnTable = true;
+            m_placementOptions.DisableMaskAlignedFallback = true;
+            m_placementOptions.UseMaskWhenBadOrientation = false;
+            m_placementOptions.EnableTableSnap = true;
             SyncPlacementOptionsFromImageSource();
             ObjectronPlacementFixSettings.Active = m_placementOptions;
             m_worldPlacement = new ObjectronWorldPlacement(
@@ -274,11 +273,24 @@ namespace QuestObjectron
             m_pipeline = StartCoroutine(RunPipeline());
         }
 
-        private void OnDestroy()
+        public void ShutdownForSceneExit()
         {
+            if (m_shutdownForSceneExit)
+            {
+                return;
+            }
+
+            m_shutdownForSceneExit = true;
+            ResetDetection();
+            m_frameId = 0;
+            m_lastLoggedOkCount = -1;
+            m_lastLoggedLocalizedCount = -1;
+            m_emptyLogCount = 0;
+
             if (m_pipeline != null)
             {
                 StopCoroutine(m_pipeline);
+                m_pipeline = null;
             }
 
             if (m_objectronGraph != null && m_runningMode == RunningMode.Async)
@@ -286,9 +298,27 @@ namespace QuestObjectron
                 m_objectronGraph.OnLiftedObjectsOutput -= OnLiftedObjectsAsync;
             }
 
+            lock (m_pendingLock)
+            {
+                m_hasPendingFrame = false;
+                m_pendingFrame = null;
+            }
+
             m_framePoses.Clear();
             m_graphReady = false;
             m_objectronGraph?.Stop();
+
+            if (m_imageSource != null && ImageSourceProvider.ImageSource == m_imageSource)
+            {
+                ImageSourceProvider.ImageSource = null;
+            }
+
+            QuestObjectronLogger.Boot("cup_detection_shutdown");
+        }
+
+        private void OnDestroy()
+        {
+            ShutdownForSceneExit();
         }
 
         private IEnumerator WaitForPermissions()
@@ -530,11 +560,8 @@ namespace QuestObjectron
                 QuestObjectronLogger.Detect($"ok count={count} ms={ms:F0}");
             }
 
-            if (Scanning)
-            {
-                var placementOutputs = m_worldPlacement.PlaceDetailed(lifted, cameraPose, null);
-                TryLocalizeNewCups(lifted, placementOutputs);
-            }
+            var placementOutputs = m_worldPlacement.PlaceDetailed(lifted, cameraPose, null);
+            ProcessCupPlacements(lifted, placementOutputs);
 
             ReportDetectionHud(lifted, cameraPose, count);
         }
@@ -565,16 +592,11 @@ namespace QuestObjectron
             }
         }
 
-        private void TryLocalizeNewCups(FrameAnnotation lifted, IReadOnlyList<PlacementOutput> placementOutputs)
+        private void ProcessCupPlacements(FrameAnnotation lifted, IReadOnlyList<PlacementOutput> placementOutputs)
         {
-            var added = 0;
+            var changed = false;
             foreach (var output in placementOutputs)
             {
-                if (m_localizedCups.Count >= MaxLocalizedCups)
-                {
-                    break;
-                }
-
                 if (output.Corners == null || output.Method == PlacementMethod.None)
                 {
                     continue;
@@ -585,27 +607,47 @@ namespace QuestObjectron
                     continue;
                 }
 
+                if (!ObjectronCupSizeFit.TryScore(output.Corners, out var sizeScore, out var detectedSortedM))
+                {
+                    continue;
+                }
+
                 var center = output.Corners[0];
-                if (IsNearLocalizedCup(center))
+                var existingIndex = FindLocalizedCupIndex(center);
+                if (existingIndex >= 0)
+                {
+                    if (TryRefineLocalizedCup(existingIndex, output, lifted, sizeScore, detectedSortedM))
+                    {
+                        changed = true;
+                    }
+
+                    continue;
+                }
+
+                if (!Scanning)
                 {
                     continue;
                 }
 
                 var annotation = FindAnnotation(lifted, output.ObjectId);
-                m_localizedCups.Add(new LocalizedCup
+                m_localizedCups.Add(new ObjectronLocalizedCupState
                 {
                     ObjectId = output.ObjectId,
                     Method = output.Method,
                     Corners = (Vector3[])output.Corners.Clone(),
                     Annotation = annotation,
                     DebugReport = output.DebugReport,
+                    SizeFitScore = sizeScore,
+                    DetectedExtentsSortedM = detectedSortedM,
                 });
-                added++;
+                changed = true;
                 QuestObjectronLogger.Detect(
-                    $"cup_localized id={output.ObjectId} method={output.Method} center={center:F2} total={m_localizedCups.Count}");
+                    $"cup_localized id={output.ObjectId} method={output.Method} " +
+                    $"center={center:F2} edges={ObjectronCupSizeFit.FormatExtentsCm(detectedSortedM)} " +
+                    $"size_fit={sizeScore:F3} total={m_localizedCups.Count}");
             }
 
-            if (added == 0)
+            if (!changed)
             {
                 return;
             }
@@ -619,10 +661,42 @@ namespace QuestObjectron
             RefreshLocalizedVisuals();
         }
 
-        private bool IsNearLocalizedCup(Vector3 centerWorld)
+        private bool TryRefineLocalizedCup(
+            int index,
+            PlacementOutput output,
+            FrameAnnotation lifted,
+            float candidateScore,
+            Vector3 candidateSortedM)
         {
-            foreach (var cup in m_localizedCups)
+            var cup = m_localizedCups[index];
+            if (!ObjectronCupSizeFit.IsBetterFit(candidateScore, cup.SizeFitScore))
             {
+                return false;
+            }
+
+            var previousScore = cup.SizeFitScore;
+            var previousExtents = cup.DetectedExtentsSortedM;
+            cup.ObjectId = output.ObjectId;
+            cup.Method = output.Method;
+            cup.Corners = (Vector3[])output.Corners.Clone();
+            cup.Annotation = FindAnnotation(lifted, output.ObjectId);
+            cup.DebugReport = output.DebugReport;
+            cup.SizeFitScore = candidateScore;
+            cup.DetectedExtentsSortedM = candidateSortedM;
+            QuestObjectronLogger.Detect(
+                $"cup_size_refined idx={index} id={output.ObjectId} " +
+                $"fit {previousScore:F3}->{candidateScore:F3} " +
+                $"edges {ObjectronCupSizeFit.FormatExtentsCm(previousExtents)}->" +
+                $"{ObjectronCupSizeFit.FormatExtentsCm(candidateSortedM)} " +
+                $"ref={ObjectronCupSizeFit.FormatExtentsCm(ObjectronCupSizeFit.ReferenceExtentsM)}");
+            return true;
+        }
+
+        private int FindLocalizedCupIndex(Vector3 centerWorld)
+        {
+            for (var i = 0; i < m_localizedCups.Count; i++)
+            {
+                var cup = m_localizedCups[i];
                 if (cup.Corners == null)
                 {
                     continue;
@@ -630,11 +704,11 @@ namespace QuestObjectron
 
                 if (Vector3.Distance(centerWorld, cup.Corners[0]) < SameCupCenterRadiusM)
                 {
-                    return true;
+                    return i;
                 }
             }
 
-            return false;
+            return -1;
         }
 
         private void RefreshLocalizedVisuals()
@@ -687,8 +761,11 @@ namespace QuestObjectron
 
             var worldBoxes = m_lastWorldBoxes ?? BuildLocalizedWorldBoxes();
             var placementMethod = primary?.Method ?? PlacementMethod.None;
+            var sizeFit = primary != null ? primary.SizeFitScore : float.NaN;
             var detail =
-                $"localized={m_localizedCups.Count}/{MaxLocalizedCups} scanning={Scanning} kp2d={CountKeypointsWith2D(ann)} kp3d={CountKeypointsWith3D(ann)}";
+                $"localized={m_localizedCups.Count}/{MaxLocalizedCups} scanning={Scanning} " +
+                $"size_fit={(float.IsNaN(sizeFit) ? "—" : sizeFit.ToString("F3"))} " +
+                $"kp2d={CountKeypointsWith2D(ann)} kp3d={CountKeypointsWith3D(ann)}";
             m_detectionDebug?.Report(new DetectionDebugInfo(
                 camT.HasValue
                     ? $"cup cam=({camT.Value.x:F2},{camT.Value.y:F2},{camT.Value.z:F2})m"
@@ -791,15 +868,15 @@ namespace QuestObjectron
         {
             if (localizedCount >= maxCups)
             {
-                return $"all {maxCups} cups localized — A=reset scan";
+                return $"all {maxCups} cups localized — refining size; A=reset";
             }
 
             if (localizedCount > 0)
             {
-                return $"localized {localizedCount}/{maxCups} — look at next cup; A=reset";
+                return $"localized {localizedCount}/{maxCups} — refining size; A=reset";
             }
 
-            return "scanning — point at each cup; A=reset scan";
+            return "scanning — point at each cup (11×10×8 cm); A=reset";
         }
 
         private static int CountKeypointsWith2D(ObjectAnnotation ann)

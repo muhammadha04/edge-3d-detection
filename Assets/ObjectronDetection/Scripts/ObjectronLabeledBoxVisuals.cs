@@ -121,6 +121,27 @@ namespace QuestObjectron
             ClearLocalization();
         }
 
+        public void ClearAllForSceneExit()
+        {
+            Clear();
+            m_prewarmed = false;
+        }
+
+        public static void DestroyPersistentWorldRoot()
+        {
+            if (s_worldRoot != null)
+            {
+                Object.Destroy(s_worldRoot.gameObject);
+                s_worldRoot = null;
+            }
+
+            var existing = GameObject.Find("ObjectronLabeledVisualsRoot");
+            if (existing != null)
+            {
+                Object.Destroy(existing);
+            }
+        }
+
         private void ApplyBox(
             Vector3[] corners,
             Vector3 scale,

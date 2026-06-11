@@ -1,0 +1,18 @@
+// Runtime-only cup track state (not Unity-serialized).
+
+using Mediapipe;
+using UnityEngine;
+
+namespace QuestObjectron
+{
+    internal sealed class ObjectronLocalizedCupState
+    {
+        public int ObjectId;
+        public PlacementMethod Method;
+        public Vector3[] Corners;
+        public ObjectAnnotation Annotation;
+        public ObjectronPlacementDebugReport? DebugReport;
+        public float SizeFitScore = float.MaxValue;
+        public Vector3 DetectedExtentsSortedM;
+    }
+}

@@ -2,6 +2,8 @@
 
 Unity 6 project for **Meta Quest 3** that runs **native MediaPipe Objectron** (Cup model) on **Passthrough Camera API** frames and draws **world-space 3D wireframe boxes** over detected cups. Inference uses **homuler MediaPipeUnityPlugin** (not Unity Inference Engine / Sentis).
 
+For the full technical pipeline (placement math, parameters, cup rules, session cleanup), see **[README.md](README.md)**.
+
 ## Requirements
 
 - Unity **6000.0.38f1** or newer

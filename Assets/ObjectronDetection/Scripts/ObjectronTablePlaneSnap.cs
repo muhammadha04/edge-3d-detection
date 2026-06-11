@@ -202,6 +202,8 @@ namespace QuestObjectron
 
         public static void ClearSmoothedTableY(int objectId) => s_smoothedTableYByObject.Remove(objectId);
 
+        public static void ClearAllSmoothedTableY() => s_smoothedTableYByObject.Clear();
+
         private static bool HasSaneModelExtents(Vector3 halfExtents)
         {
             var minEdge = 2f * Mathf.Min(halfExtents.x, Mathf.Min(halfExtents.y, halfExtents.z));

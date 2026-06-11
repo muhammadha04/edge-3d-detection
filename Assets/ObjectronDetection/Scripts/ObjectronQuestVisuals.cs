@@ -89,17 +89,34 @@ namespace QuestObjectron
 
         public void ClearLocalization()
         {
-            if (!IsLocalized)
-            {
-                return;
-            }
-
             m_localizedBoxes = null;
             m_heldBoxes = null;
             m_lastVizLogKey = "";
             m_activeCount = 0;
             HideAll();
             QuestObjectronLogger.Viz("box_localize_cleared");
+        }
+
+        public void ClearAllForSceneExit()
+        {
+            ClearLocalization();
+            m_prewarmed = false;
+            m_pool.Clear();
+        }
+
+        public static void DestroyPersistentWorldRoot()
+        {
+            if (s_worldRoot != null)
+            {
+                Object.Destroy(s_worldRoot.gameObject);
+                s_worldRoot = null;
+            }
+
+            var existing = GameObject.Find("ObjectronVisualsRoot");
+            if (existing != null)
+            {
+                Object.Destroy(existing);
+            }
         }
 
         public void HoldOrClear()

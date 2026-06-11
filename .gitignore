@@ -25,6 +25,7 @@
 .DS_Store
 Thumbs.db
 Assets/_Recovery/
+.utmp/
 
 # MediaPipe native binaries (>100MB) — run install_mediapipe.ps1 after clone
 Packages/com.github.homuler.mediapipe/

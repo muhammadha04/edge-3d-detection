@@ -183,6 +183,11 @@ namespace QuestObjectron
                     ObjectronWorldOrientation.TryAlignBoxToGravity(corners);
                 }
 
+                if (m_options.ConstrainUprightOnTable)
+                {
+                    ObjectronWorldOrientation.TryConstrainUprightOnTable(corners);
+                }
+
                 ObjectronBoxValidation.TryGetExtentMeters(corners, out var extent);
                 QuestObjectronLogger.World(
                     $"objectId={annotation.ObjectId} method={output.Method} center={corners[0]:F2} extent={extent:F3}m");
@@ -310,7 +315,8 @@ namespace QuestObjectron
                     finalMethod = PlacementMethod.TableSnappedBox;
                 }
             }
-            else if (ObjectronBoxProjectionDebug.TryBuildMaskAlignedCorners(
+            else if (!m_options.DisableMaskAlignedFallback
+                     && ObjectronBoxProjectionDebug.TryBuildMaskAlignedCorners(
                          depthMeasure,
                          cameraPose,
                          modelHalf.z,

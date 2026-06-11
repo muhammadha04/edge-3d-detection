@@ -31,6 +31,12 @@ namespace QuestObjectron
         [Tooltip("Remove headset roll when placing 3D box in world space (keeps mug upright when head is tilted).")]
         public bool CompensateHeadRoll = true;
 
+        [Tooltip("Cup on table: bottom face horizontal, yaw from model only (no camera billboard).")]
+        public bool ConstrainUprightOnTable;
+
+        [Tooltip("Skip camera-aligned MaskAlignedBox fallback (faces the viewer).")]
+        public bool DisableMaskAlignedFallback;
+
         public Pose GetPlacementPose(Pose cameraPose) =>
             CompensateHeadRoll
                 ? ObjectronWorldOrientation.GetRollCompensatedPose(cameraPose)
@@ -40,7 +46,8 @@ namespace QuestObjectron
             $"mirror={MirrorInferenceHorizontal} unity_yup={UseUnityCameraFrame} " +
             $"mask_fallback={UseMaskWhenBadOrientation} mirror3d_x={Mirror3DLocalXWhenFlipped} " +
             $"auto_rot_pick={AutoPickLegacyRotationFrame} table_snap={EnableTableSnap} " +
-            $"level_roll={CompensateHeadRoll}";
+            $"level_roll={CompensateHeadRoll} upright_table={ConstrainUprightOnTable} " +
+            $"no_mask_aligned={DisableMaskAlignedFallback}";
 
         public void ApplyAnnotationPose(
             Vector3 rawTranslation,

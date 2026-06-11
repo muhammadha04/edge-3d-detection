@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using Meta.XR.Samples;
 using PassthroughCameraSamples.MultiObjectDetection;
+using QuestObjectron;
 using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -108,8 +109,17 @@ namespace PassthroughCameraSamples.StartScene
         private static void LoadScene(int idx)
         {
             DebugUIBuilder.Instance.Hide();
+            var path = SceneUtility.GetScenePathByBuildIndex(idx);
+            if (IsObjectronToolScene(path))
+            {
+                ObjectronSessionCleanup.BeginFreshSession();
+            }
+
             Debug.Log("Load scene: " + idx);
             SceneManager.LoadScene(idx);
         }
+
+        private static bool IsObjectronToolScene(string scenePath) =>
+            scenePath.Contains("ObjectronDetection") || scenePath.Contains("EnvironmentDepth");
     }
 }
