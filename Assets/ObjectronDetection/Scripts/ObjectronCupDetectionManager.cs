@@ -22,6 +22,15 @@ namespace QuestObjectron
         private const float SameCupCenterRadiusM = 0.15f;
         private const int MaxLocalizedCups = 3;
 
+        private sealed class LocalizedCup
+        {
+            public int ObjectId;
+            public PlacementMethod Method;
+            public Vector3[] Corners;
+            public ObjectAnnotation Annotation;
+            public ObjectronPlacementDebugReport? DebugReport;
+        }
+
         [Header("Meta / MediaPipe")]
         [SerializeField] private PassthroughCameraAccess m_cameraAccess;
         [SerializeField] private PassthroughImageSource m_imageSource;
@@ -735,15 +744,6 @@ namespace QuestObjectron
             }
 
             return null;
-        }
-
-        private sealed class LocalizedCup
-        {
-            public int ObjectId;
-            public PlacementMethod Method;
-            public Vector3[] Corners;
-            public ObjectAnnotation Annotation;
-            public ObjectronPlacementDebugReport? DebugReport;
         }
 
         private void PushHud(
