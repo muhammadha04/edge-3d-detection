@@ -14,16 +14,32 @@ namespace QuestObjectron
         /// </summary>
         public static Pose GetRollCompensatedPose(Pose cameraPose)
         {
-            var forward = cameraPose.rotation * Vector3.forward;
+            var leveled = RemoveCameraRoll(cameraPose.rotation);
+            return new Pose(cameraPose.position, leveled);
+        }
+
+        /// <summary>Rotation with headset roll removed (pitch/yaw kept, up aligned to world +Y).</summary>
+        public static Quaternion RemoveCameraRoll(Quaternion cameraRotation)
+        {
+            var forward = cameraRotation * Vector3.forward;
             var flatForward = Vector3.ProjectOnPlane(forward, Vector3.up);
             if (flatForward.sqrMagnitude < 1e-4f)
             {
-                return cameraPose;
+                return cameraRotation;
             }
 
             flatForward.Normalize();
-            var leveled = Quaternion.LookRotation(flatForward, Vector3.up);
-            return new Pose(cameraPose.position, leveled);
+            return Quaternion.LookRotation(flatForward, Vector3.up);
+        }
+
+        /// <summary>Map a camera-local point (meters) to world space, optionally without headset roll.</summary>
+        public static Vector3 CameraLocalToWorld(
+            Vector3 cameraLocalMeters,
+            Pose cameraPose,
+            bool compensateHeadRoll)
+        {
+            var pose = compensateHeadRoll ? GetRollCompensatedPose(cameraPose) : cameraPose;
+            return pose.position + pose.rotation * cameraLocalMeters;
         }
 
         /// <summary>
