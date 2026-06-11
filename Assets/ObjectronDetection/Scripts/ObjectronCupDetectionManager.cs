@@ -64,6 +64,8 @@ namespace QuestObjectron
         [NonSerialized] private List<ObjectronLocalizedCupState> m_localizedCups = new();
         private int m_lastLoggedLocalizedCount = -1;
         private bool m_shutdownForSceneExit;
+        private float m_lastResetButtonTime = -999f;
+        private const float ResetButtonCooldownSec = 1f;
 
         public int LocalizedCupCount => m_localizedCups.Count;
         public bool Scanning => m_localizedCups.Count < MaxLocalizedCups;
@@ -160,22 +162,33 @@ namespace QuestObjectron
         private void TryControllerInput()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            if (OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch))
+            if (OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.LTouch))
             {
-                ResetDetection();
+                var now = Time.realtimeSinceStartup;
+                if (now - m_lastResetButtonTime >= ResetButtonCooldownSec)
+                {
+                    m_lastResetButtonTime = now;
+                    ResetDetection();
+                }
             }
 #endif
         }
 
-        /// <summary>Clear all localized cups and restart the one-shot scan.</summary>
-        public void ResetDetection()
+        /// <summary>Clear localized cups without user-facing reset logs (scene exit / shutdown).</summary>
+        private void ClearLocalizedStateSilent()
         {
             m_localizedCups.Clear();
             m_lastWorldBoxes = null;
             m_lastLoggedLocalizedCount = -1;
-            m_questVisuals?.ClearLocalization();
+            m_questVisuals?.ClearLocalization(silent: true);
             m_detectionDebug?.Clear();
             m_bboxDrawer?.SetDetections(null);
+        }
+
+        /// <summary>Clear all localized cups and restart the one-shot scan (Y on left controller).</summary>
+        public void ResetDetection()
+        {
+            ClearLocalizedStateSilent();
             QuestObjectronLogger.Detect("cup_scan_reset — point at cups to localize (max 3)");
         }
 
@@ -194,12 +207,11 @@ namespace QuestObjectron
 
             m_lastRotationHintTime = now;
             QuestObjectronLogger.Boot(
-                $"controls: A=reset cup scan (rotation={m_imageSource.rotation} flip={m_imageSource.isHorizontallyFlipped})");
+                $"controls: Y (left)=reset cup scan (rotation={m_imageSource.rotation} flip={m_imageSource.isHorizontallyFlipped})");
         }
 
         private void Awake()
         {
-            ObjectronSessionCleanup.BeginFreshSession();
             m_shutdownForSceneExit = false;
             m_localizedCups ??= new List<ObjectronLocalizedCupState>();
             QuestObjectronLogger.Boot($"version={Application.version} unity={Application.unityVersion} platform={Application.platform}");
@@ -209,10 +221,6 @@ namespace QuestObjectron
             }
 
             m_placementOptions.CompensateHeadRoll = true;
-            m_placementOptions.ConstrainUprightOnTable = true;
-            m_placementOptions.DisableMaskAlignedFallback = true;
-            m_placementOptions.UseMaskWhenBadOrientation = false;
-            m_placementOptions.EnableTableSnap = true;
             SyncPlacementOptionsFromImageSource();
             ObjectronPlacementFixSettings.Active = m_placementOptions;
             m_worldPlacement = new ObjectronWorldPlacement(
@@ -268,6 +276,12 @@ namespace QuestObjectron
 
         private IEnumerator Start()
         {
+            if (m_shutdownForSceneExit)
+            {
+                QuestObjectronLogger.Boot("cup_detection_restart after early shutdown");
+                m_shutdownForSceneExit = false;
+            }
+
             yield return WaitForPermissions();
             yield return WaitForBootstrap();
             m_pipeline = StartCoroutine(RunPipeline());
@@ -281,7 +295,7 @@ namespace QuestObjectron
             }
 
             m_shutdownForSceneExit = true;
-            ResetDetection();
+            ClearLocalizedStateSilent();
             m_frameId = 0;
             m_lastLoggedOkCount = -1;
             m_lastLoggedLocalizedCount = -1;
@@ -318,7 +332,10 @@ namespace QuestObjectron
 
         private void OnDestroy()
         {
-            ShutdownForSceneExit();
+            if (Application.isPlaying)
+            {
+                ShutdownForSceneExit();
+            }
         }
 
         private IEnumerator WaitForPermissions()
@@ -588,7 +605,7 @@ namespace QuestObjectron
             PushHud("scanning", null, 0f, -1f, -1, PlacementMethod.None);
             if (m_emptyLogCount == 1 || m_emptyLogCount % 45 == 0)
             {
-                QuestObjectronLogger.Detect("scanning — point at mug ~0.3-1m; A=reset scan");
+                QuestObjectronLogger.Detect("scanning — point at mug ~0.3-1m; Y (left)=reset scan");
             }
         }
 
@@ -868,15 +885,15 @@ namespace QuestObjectron
         {
             if (localizedCount >= maxCups)
             {
-                return $"all {maxCups} cups localized — refining size; A=reset";
+                return $"all {maxCups} cups localized — refining size; Y=reset";
             }
 
             if (localizedCount > 0)
             {
-                return $"localized {localizedCount}/{maxCups} — refining size; A=reset";
+                return $"localized {localizedCount}/{maxCups} — refining size; Y=reset";
             }
 
-            return "scanning — point at each cup (11×10×8 cm); A=reset";
+            return "scanning — point at each cup (11×10×8 cm); Y=reset";
         }
 
         private static int CountKeypointsWith2D(ObjectAnnotation ann)

@@ -87,19 +87,23 @@ namespace QuestObjectron
             QuestObjectronLogger.Viz($"box_localized corners={m_localizedBoxes.Count}");
         }
 
-        public void ClearLocalization()
+        public void ClearLocalization(bool silent = false)
         {
+            var hadContent = IsLocalized || m_activeCount > 0;
             m_localizedBoxes = null;
             m_heldBoxes = null;
             m_lastVizLogKey = "";
             m_activeCount = 0;
             HideAll();
-            QuestObjectronLogger.Viz("box_localize_cleared");
+            if (!silent && hadContent)
+            {
+                QuestObjectronLogger.Viz("box_localize_cleared");
+            }
         }
 
         public void ClearAllForSceneExit()
         {
-            ClearLocalization();
+            ClearLocalization(silent: true);
             m_prewarmed = false;
             m_pool.Clear();
         }

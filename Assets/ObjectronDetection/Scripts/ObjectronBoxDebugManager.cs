@@ -67,7 +67,6 @@ namespace QuestObjectron
 
         private void Awake()
         {
-            ObjectronSessionCleanup.BeginFreshSession();
             m_shutdownForSceneExit = false;
             if (m_placementOptions == null)
             {
@@ -130,6 +129,12 @@ namespace QuestObjectron
 
         private IEnumerator Start()
         {
+            if (m_shutdownForSceneExit)
+            {
+                QuestObjectronLogger.Boot("box_debug_restart after early shutdown");
+                m_shutdownForSceneExit = false;
+            }
+
             yield return WaitForPermissions();
             yield return WaitForBootstrap();
             m_pipeline = StartCoroutine(RunPipeline());

@@ -19,10 +19,17 @@ namespace PassthroughCameraSamples.StartScene
         [SerializeField] private Vector3 _handOffset = new Vector3(0f, 0f, 0.04f);
         [SerializeField] private Vector3 _handRotation = new Vector3(0f, 180f, 90f);
         private bool? _isHandTracking;
+        private float m_sceneEnterTime;
+
+        private void OnEnable()
+        {
+            m_sceneEnterTime = Time.realtimeSinceStartup;
+        }
 
         private void Update()
         {
-            if (OVRInput.GetUp(OVRInput.Button.Start))
+            if (OVRInput.GetUp(OVRInput.Button.Start)
+                && Time.realtimeSinceStartup - m_sceneEnterTime > 1.5f)
             {
                 ObjectronSessionCleanup.LeaveObjectronScene();
                 SceneManager.LoadScene(0);
