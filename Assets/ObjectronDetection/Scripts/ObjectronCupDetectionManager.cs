@@ -18,6 +18,9 @@ namespace QuestObjectron
         private const int InferenceEveryNFrames = 2;
         /// <summary>Min interval between main-thread detection process + ok logs (stops objectId 1–21 spam).</summary>
         private const float DetectionProcessMinInterval = 0.2f;
+        /// <summary>Two cup centers closer than this are treated as the same mug.</summary>
+        private const float SameCupCenterRadiusM = 0.15f;
+        private const int MaxLocalizedCups = 3;
 
         [Header("Meta / MediaPipe")]
         [SerializeField] private PassthroughCameraAccess m_cameraAccess;
@@ -34,7 +37,6 @@ namespace QuestObjectron
         [SerializeField] private ObjectronEnvironmentDepthProvider m_environmentDepthProvider;
 
         [Header("Tuning")]
-        [SerializeField] private bool m_require2dOverlayBefore3d = true;
         [SerializeField] private ObjectronPlacementOptions m_placementOptions = new();
         [SerializeField] private RunningMode m_runningMode = RunningMode.Async;
         [SerializeField] private float m_minDetectionConfidence = 0.35f;
@@ -44,10 +46,6 @@ namespace QuestObjectron
         private readonly ObjectronFramePoseQueue m_framePoses = new();
         private FrameAnnotation m_pendingFrame;
         private bool m_hasPendingFrame;
-        private ObjectronOverlayFrame m_pending2d;
-        private bool m_hasPending2d;
-        private readonly List<ObjectronOverlayRect> m_lastOverlayRects = new();
-        private bool m_enable3dVisuals;
 
         private ObjectronWorldPlacement m_worldPlacement;
 
@@ -56,15 +54,18 @@ namespace QuestObjectron
         private int m_frameId;
         private bool m_graphReady;
         private int m_emptyLogCount;
-        private int m_lastLogged2dBoxCount = -1;
         private float m_lastDetectionProcessTime = -999f;
         private int m_lastLoggedOkCount = -1;
-        private int m_last2dBoxCount;
         private float m_lastRotationHintTime;
         private int m_lastHudObjectId = -1;
         private string m_lastPlacementMethod = "—";
         private List<Vector3[]> m_lastWorldBoxes;
         private ObjectronPinSnapshot m_lastPinSnapshot;
+        private readonly List<LocalizedCup> m_localizedCups = new();
+        private int m_lastLoggedLocalizedCount = -1;
+
+        public int LocalizedCupCount => m_localizedCups.Count;
+        public bool Scanning => m_localizedCups.Count < MaxLocalizedCups;
 
         public void WireReferences(
             PassthroughCameraAccess cameraAccess,
@@ -131,26 +132,18 @@ namespace QuestObjectron
                 }
             }
 
-            if (m_passthroughOverlay == null)
-            {
-                m_passthroughOverlay = GetComponent<ObjectronPassthroughOverlay>()
-                    ?? FindAnyObjectByType<ObjectronPassthroughOverlay>();
-                if (m_passthroughOverlay == null)
-                {
-                    m_passthroughOverlay = gameObject.AddComponent<ObjectronPassthroughOverlay>();
-                }
-            }
-
             if (m_environmentDepthProvider == null)
             {
                 m_environmentDepthProvider = GetComponent<ObjectronEnvironmentDepthProvider>()
                     ?? gameObject.AddComponent<ObjectronEnvironmentDepthProvider>();
             }
 
-            m_passthroughOverlay.Bind(m_cameraAccess, m_imageSource != null && m_imageSource.isHorizontallyFlipped);
-            m_passthroughOverlay.BindDepth(m_environmentDepthProvider);
+            if (m_passthroughOverlay != null)
+            {
+                m_passthroughOverlay.enabled = false;
+            }
+
             EnsurePlacementFixMenu();
-            m_enable3dVisuals = !m_require2dOverlayBefore3d;
             m_questVisuals.Prewarm();
             m_bboxDrawer?.Prewarm();
             m_detectionDebug?.Prewarm();
@@ -158,37 +151,31 @@ namespace QuestObjectron
 
         private void Update()
         {
-            TryLocalizationInput();
-            TryProcessPending2dOnMainThread();
+            TryControllerInput();
             TryProcessPendingOnMainThread();
-            if (m_enable3dVisuals)
-            {
-                m_questVisuals?.HoldOrClear();
-            }
             MaybeLogRotationHint();
         }
 
-        private void TryLocalizationInput()
+        private void TryControllerInput()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch))
             {
-                m_questVisuals?.ClearLocalization();
-            }
-
-            if (OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch))
-            {
-                if (m_lastWorldBoxes != null && m_lastWorldBoxes.Count > 0 && m_enable3dVisuals)
-                {
-                    ObjectronPinReferenceDebug.LogPinReference(m_lastPinSnapshot);
-                    m_questVisuals?.Localize(m_lastWorldBoxes);
-                }
-                else
-                {
-                    QuestObjectronLogger.Viz("box_localize_skipped — detect a cup first");
-                }
+                ResetDetection();
             }
 #endif
+        }
+
+        /// <summary>Clear all localized cups and restart the one-shot scan.</summary>
+        public void ResetDetection()
+        {
+            m_localizedCups.Clear();
+            m_lastWorldBoxes = null;
+            m_lastLoggedLocalizedCount = -1;
+            m_questVisuals?.ClearLocalization();
+            m_detectionDebug?.Clear();
+            m_bboxDrawer?.SetDetections(null);
+            QuestObjectronLogger.Detect("cup_scan_reset — point at cups to localize (max 3)");
         }
 
         private void MaybeLogRotationHint()
@@ -206,7 +193,7 @@ namespace QuestObjectron
 
             m_lastRotationHintTime = now;
             QuestObjectronLogger.Boot(
-                $"controls: B=pin+PIN_REF_DEBUG  A=clear  X=depth in 2D  Y=depth src (rotation={m_imageSource.rotation} flip={m_imageSource.isHorizontallyFlipped})");
+                $"controls: A=reset cup scan (rotation={m_imageSource.rotation} flip={m_imageSource.isHorizontallyFlipped})");
         }
 
         private void Awake()
@@ -217,6 +204,7 @@ namespace QuestObjectron
                 m_placementOptions = new ObjectronPlacementOptions();
             }
 
+            m_placementOptions.CompensateHeadRoll = true;
             SyncPlacementOptionsFromImageSource();
             ObjectronPlacementFixSettings.Active = m_placementOptions;
             m_worldPlacement = new ObjectronWorldPlacement(
@@ -287,8 +275,6 @@ namespace QuestObjectron
             if (m_objectronGraph != null && m_runningMode == RunningMode.Async)
             {
                 m_objectronGraph.OnLiftedObjectsOutput -= OnLiftedObjectsAsync;
-                m_objectronGraph.OnMultiBoxRectsOutput -= OnMultiBoxRectsAsync;
-                m_objectronGraph.OnMultiBoxLandmarksOutput -= OnMultiBoxLandmarksAsync;
             }
 
             m_framePoses.Clear();
@@ -391,8 +377,6 @@ namespace QuestObjectron
             if (m_runningMode == RunningMode.Async)
             {
                 m_objectronGraph.OnLiftedObjectsOutput += OnLiftedObjectsAsync;
-                m_objectronGraph.OnMultiBoxRectsOutput += OnMultiBoxRectsAsync;
-                m_objectronGraph.OnMultiBoxLandmarksOutput += OnMultiBoxLandmarksAsync;
             }
 
             m_objectronGraph.StartRun(m_imageSource);
@@ -469,120 +453,6 @@ namespace QuestObjectron
             }
         }
 
-        /// <summary>MediaPipe callback thread — enqueue 2D rects (and count for rotation logs).</summary>
-        private void OnMultiBoxRectsAsync(object sender, OutputEventArgs<List<NormalizedRect>> e)
-        {
-            var rects = e.value;
-            var count = rects?.Count ?? 0;
-            m_last2dBoxCount = count;
-
-            if (count > 0 && rects != null)
-            {
-                lock (m_pendingLock)
-                {
-                    m_pending2d ??= new ObjectronOverlayFrame();
-                    m_pending2d.Rects.Clear();
-                    foreach (var r in rects)
-                    {
-                        m_pending2d.Rects.Add(ObjectronOverlayRect.From(r));
-                    }
-
-                    m_hasPending2d = true;
-                }
-            }
-
-            if (count == m_lastLogged2dBoxCount)
-            {
-                return;
-            }
-
-            m_lastLogged2dBoxCount = count;
-            if (count > 0)
-            {
-                m_imageSource?.LogRotationWith2dHits(count);
-                QuestObjectronLogger.Detect(
-                    $"2d_boxes={count} rotation={m_imageSource?.rotation} flip={m_imageSource?.isHorizontallyFlipped}");
-            }
-        }
-
-        private void TryProcessPending2dOnMainThread()
-        {
-            if (m_passthroughOverlay == null)
-            {
-                return;
-            }
-
-            ObjectronOverlayFrame frame;
-            lock (m_pendingLock)
-            {
-                if (!m_hasPending2d || m_pending2d == null)
-                {
-                    return;
-                }
-
-                frame = new ObjectronOverlayFrame();
-                frame.Rects.AddRange(m_pending2d.Rects);
-                foreach (var list in m_pending2d.LandmarkLists)
-                {
-                    var copy = new List<ObjectronOverlayLandmark>(list);
-                    frame.LandmarkLists.Add(copy);
-                }
-
-                m_hasPending2d = false;
-            }
-
-            if (frame.Rects.Count == 0 && frame.LandmarkLists.Count == 0)
-            {
-                m_passthroughOverlay.Clear();
-                return;
-            }
-
-            m_passthroughOverlay.Enqueue(frame);
-            m_lastOverlayRects.Clear();
-            m_lastOverlayRects.AddRange(frame.Rects);
-            if (m_require2dOverlayBefore3d && !m_enable3dVisuals && m_passthroughOverlay.HasDrawn2dThisSession)
-            {
-                m_enable3dVisuals = true;
-                QuestObjectronLogger.Viz("quest_3d_enabled after overlay_2d confirmed");
-            }
-        }
-
-        /// <summary>MediaPipe callback thread — enqueue 2D landmarks only.</summary>
-        private void OnMultiBoxLandmarksAsync(object sender, OutputEventArgs<List<NormalizedLandmarkList>> e)
-        {
-            if (!m_graphReady)
-            {
-                return;
-            }
-
-            var landmarks = e.value;
-            if (landmarks == null || landmarks.Count == 0)
-            {
-                return;
-            }
-
-            lock (m_pendingLock)
-            {
-                m_pending2d ??= new ObjectronOverlayFrame();
-                m_pending2d.LandmarkLists.Clear();
-                foreach (var list in landmarks)
-                {
-                    var copy = new List<ObjectronOverlayLandmark>();
-                    if (list?.Landmark != null)
-                    {
-                        foreach (var lm in list.Landmark)
-                        {
-                            copy.Add(new ObjectronOverlayLandmark(lm.X, lm.Y));
-                        }
-                    }
-
-                    m_pending2d.LandmarkLists.Add(copy);
-                }
-
-                m_hasPending2d = true;
-            }
-        }
-
         /// <summary>MediaPipe callback thread — enqueue only, no Unity API.</summary>
         private void OnLiftedObjectsAsync(object sender, OutputEventArgs<FrameAnnotation> e)
         {
@@ -637,30 +507,7 @@ namespace QuestObjectron
         {
             if (lifted == null || lifted.Annotations == null || lifted.Annotations.Count == 0)
             {
-                var keep3d = m_questVisuals != null && (m_questVisuals.IsHolding || m_questVisuals.IsLocalized);
-                if (keep3d)
-                {
-                    m_emptyLogCount++;
-                    var state = m_questVisuals.IsLocalized ? "pinned" : $"2d_only ({m_last2dBoxCount})";
-                    PushHud(state, null, 0f, -1f, -1, PlacementMethod.None);
-                    return;
-                }
-
-                m_bboxDrawer?.SetDetections(null);
-                if (m_enable3dVisuals)
-                {
-                    m_questVisuals?.HoldOrClear();
-                }
-
-                m_detectionDebug?.Clear();
-                m_emptyLogCount++;
-                var detectState = m_last2dBoxCount > 0 ? $"2d_only ({m_last2dBoxCount})" : "empty";
-                PushHud(detectState, null, 0f, -1f, -1, PlacementMethod.None);
-                if (m_emptyLogCount == 1 || m_emptyLogCount % 45 == 0)
-                {
-                    QuestObjectronLogger.Detect("empty (point at mug ~0.3-1m; B=pin box A=clear pin)");
-                }
-
+                ProcessEmptyDetections();
                 return;
             }
 
@@ -674,64 +521,165 @@ namespace QuestObjectron
                 QuestObjectronLogger.Detect($"ok count={count} ms={ms:F0}");
             }
 
-            var ann = lifted.Annotations[0];
+            if (Scanning)
+            {
+                var placementOutputs = m_worldPlacement.PlaceDetailed(lifted, cameraPose, null);
+                TryLocalizeNewCups(lifted, placementOutputs);
+            }
+
+            ReportDetectionHud(lifted, cameraPose, count);
+        }
+
+        private void ProcessEmptyDetections()
+        {
+            if (m_localizedCups.Count > 0)
+            {
+                m_emptyLogCount++;
+                var primary = m_localizedCups[0];
+                PushHud(
+                    $"localized ({m_localizedCups.Count}/{MaxLocalizedCups})",
+                    primary.Corners?[0],
+                    GetExtent(primary.Corners),
+                    GetDistance(primary.Corners?[0]),
+                    primary.ObjectId,
+                    primary.Method);
+                return;
+            }
+
+            m_bboxDrawer?.SetDetections(null);
+            m_detectionDebug?.Clear();
+            m_emptyLogCount++;
+            PushHud("scanning", null, 0f, -1f, -1, PlacementMethod.None);
+            if (m_emptyLogCount == 1 || m_emptyLogCount % 45 == 0)
+            {
+                QuestObjectronLogger.Detect("scanning — point at mug ~0.3-1m; A=reset scan");
+            }
+        }
+
+        private void TryLocalizeNewCups(FrameAnnotation lifted, IReadOnlyList<PlacementOutput> placementOutputs)
+        {
+            var added = 0;
+            foreach (var output in placementOutputs)
+            {
+                if (m_localizedCups.Count >= MaxLocalizedCups)
+                {
+                    break;
+                }
+
+                if (output.Corners == null || output.Method == PlacementMethod.None)
+                {
+                    continue;
+                }
+
+                if (!ObjectronBoxValidation.TryGetExtentMeters(output.Corners, out _))
+                {
+                    continue;
+                }
+
+                var center = output.Corners[0];
+                if (IsNearLocalizedCup(center))
+                {
+                    continue;
+                }
+
+                var annotation = FindAnnotation(lifted, output.ObjectId);
+                m_localizedCups.Add(new LocalizedCup
+                {
+                    ObjectId = output.ObjectId,
+                    Method = output.Method,
+                    Corners = (Vector3[])output.Corners.Clone(),
+                    Annotation = annotation,
+                    DebugReport = output.DebugReport,
+                });
+                added++;
+                QuestObjectronLogger.Detect(
+                    $"cup_localized id={output.ObjectId} method={output.Method} center={center:F2} total={m_localizedCups.Count}");
+            }
+
+            if (added == 0)
+            {
+                return;
+            }
+
+            if (m_localizedCups.Count != m_lastLoggedLocalizedCount)
+            {
+                m_lastLoggedLocalizedCount = m_localizedCups.Count;
+                QuestObjectronLogger.Detect($"cup_localized_total={m_localizedCups.Count}");
+            }
+
+            RefreshLocalizedVisuals();
+        }
+
+        private bool IsNearLocalizedCup(Vector3 centerWorld)
+        {
+            foreach (var cup in m_localizedCups)
+            {
+                if (cup.Corners == null)
+                {
+                    continue;
+                }
+
+                if (Vector3.Distance(centerWorld, cup.Corners[0]) < SameCupCenterRadiusM)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void RefreshLocalizedVisuals()
+        {
+            m_lastWorldBoxes = BuildLocalizedWorldBoxes();
+            m_bboxDrawer?.SetDetections(null);
+            m_questVisuals?.Localize(m_lastWorldBoxes);
+
+            if (m_lastWorldBoxes.Count > 0 && m_localizedCups.Count > 0)
+            {
+                var cup = m_localizedCups[m_localizedCups.Count - 1];
+                m_lastPinSnapshot = new ObjectronPinSnapshot(
+                    cup.ObjectId,
+                    cup.Method,
+                    m_cameraAccess.GetCameraPose(),
+                    m_lastWorldBoxes[m_lastWorldBoxes.Count - 1],
+                    cup.Annotation,
+                    cup.DebugReport);
+            }
+        }
+
+        private List<Vector3[]> BuildLocalizedWorldBoxes()
+        {
+            var boxes = new List<Vector3[]>(m_localizedCups.Count);
+            foreach (var cup in m_localizedCups)
+            {
+                if (cup.Corners != null)
+                {
+                    boxes.Add(cup.Corners);
+                }
+            }
+
+            return boxes;
+        }
+
+        private void ReportDetectionHud(FrameAnnotation lifted, Pose cameraPose, int frameCount)
+        {
+            var primary = m_localizedCups.Count > 0
+                ? m_localizedCups[m_localizedCups.Count - 1]
+                : null;
+            var ann = primary?.Annotation ?? lifted.Annotations[0];
             Vector3? camT = null;
             Vector3? worldCenter = null;
             if (ann.Translation != null && ann.Translation.Count >= 3)
             {
                 var t = new Vector3(ann.Translation[0], ann.Translation[1], ann.Translation[2]);
                 camT = t;
-                worldCenter = cameraPose.position + cameraPose.rotation * t;
-                QuestObjectronLogger.Pose(
-                    $"cam=({t.x:F2},{t.y:F2},{t.z:F2}) world={worldCenter.Value:F2} id={ann.ObjectId} kp={ann.Keypoints?.Count ?? 0}");
+                worldCenter = primary?.Corners?[0] ?? cameraPose.position + cameraPose.rotation * t;
             }
 
-            var placementOutputs = m_worldPlacement.PlaceDetailed(lifted, cameraPose, m_lastOverlayRects);
-            var worldBoxes = new List<Vector3[]>(placementOutputs.Count);
-            foreach (var output in placementOutputs)
-            {
-                if (output.Corners != null)
-                {
-                    worldBoxes.Add(output.Corners);
-                }
-            }
-
-            var placement = placementOutputs.Count > 0
-                ? new PlacementResult(placementOutputs[0].Method, placementOutputs[0].Corners)
-                : m_worldPlacement.TryPlaceAnnotation(ann, cameraPose);
-
-            m_lastWorldBoxes = worldBoxes;
-            if (worldBoxes.Count > 0 && worldBoxes[0] != null)
-            {
-                ObjectronPlacementDebugReport? pinReport = null;
-                if (placementOutputs.Count > 0)
-                {
-                    pinReport = placementOutputs[0].DebugReport;
-                }
-
-                m_lastPinSnapshot = new ObjectronPinSnapshot(
-                    ann.ObjectId,
-                    placement.Method,
-                    cameraPose,
-                    worldBoxes[0],
-                    ann,
-                    pinReport);
-            }
-
-            if (m_enable3dVisuals)
-            {
-                m_bboxDrawer?.SetDetections(null);
-                if (m_questVisuals == null || !m_questVisuals.IsLocalized)
-                {
-                    m_questVisuals?.Show(worldBoxes);
-                }
-            }
-            else
-            {
-                m_bboxDrawer?.SetDetections(null);
-            }
-
-            var detail = $"placement={placement.Method} world_boxes={worldBoxes.Count} kp2d={CountKeypointsWith2D(ann)} kp3d={CountKeypointsWith3D(ann)}";
+            var worldBoxes = m_lastWorldBoxes ?? BuildLocalizedWorldBoxes();
+            var placementMethod = primary?.Method ?? PlacementMethod.None;
+            var detail =
+                $"localized={m_localizedCups.Count}/{MaxLocalizedCups} scanning={Scanning} kp2d={CountKeypointsWith2D(ann)} kp3d={CountKeypointsWith3D(ann)}";
             m_detectionDebug?.Report(new DetectionDebugInfo(
                 camT.HasValue
                     ? $"cup cam=({camT.Value.x:F2},{camT.Value.y:F2},{camT.Value.z:F2})m"
@@ -740,27 +688,62 @@ namespace QuestObjectron
                 worldCenter,
                 worldBoxes.Count > 0 ? worldBoxes[0] : null));
 
-            m_lastHudObjectId = ann.ObjectId;
-            m_lastPlacementMethod = placement.Method.ToString();
-            var extent = 0f;
-            if (worldBoxes.Count > 0 && worldBoxes[0] != null)
+            m_lastHudObjectId = primary?.ObjectId ?? ann.ObjectId;
+            m_lastPlacementMethod = placementMethod.ToString();
+            var state = Scanning
+                ? $"scanning ({m_localizedCups.Count}/{MaxLocalizedCups})"
+                : $"done ({m_localizedCups.Count})";
+            PushHud(state, worldCenter, GetExtent(worldBoxes.Count > 0 ? worldBoxes[0] : null),
+                GetDistance(worldCenter), m_lastHudObjectId, placementMethod);
+        }
+
+        private static float GetExtent(Vector3[] corners)
+        {
+            if (corners == null)
             {
-                ObjectronBoxValidation.TryGetExtentMeters(worldBoxes[0], out extent);
+                return 0f;
             }
 
-            var dist = -1f;
-            if (worldCenter.HasValue)
+            ObjectronBoxValidation.TryGetExtentMeters(corners, out var extent);
+            return extent;
+        }
+
+        private static float GetDistance(Vector3? worldCenter)
+        {
+            if (!worldCenter.HasValue)
             {
-                var hmd = Camera.main != null ? Camera.main.transform.position : Vector3.zero;
-                dist = Vector3.Distance(hmd, worldCenter.Value);
+                return -1f;
             }
 
-            PushHud($"ok ({count})", worldCenter, extent, dist, ann.ObjectId, placement.Method);
+            var hmd = Camera.main != null ? Camera.main.transform.position : Vector3.zero;
+            return Vector3.Distance(hmd, worldCenter.Value);
+        }
 
-            if (worldBoxes.Count == 0 && camT.HasValue)
+        private static ObjectAnnotation FindAnnotation(FrameAnnotation lifted, int objectId)
+        {
+            if (lifted?.Annotations == null)
             {
-                QuestObjectronLogger.World("wireframe skipped — using translation fallback marker only");
+                return null;
             }
+
+            foreach (var annotation in lifted.Annotations)
+            {
+                if (annotation.ObjectId == objectId)
+                {
+                    return annotation;
+                }
+            }
+
+            return null;
+        }
+
+        private sealed class LocalizedCup
+        {
+            public int ObjectId;
+            public PlacementMethod Method;
+            public Vector3[] Corners;
+            public ObjectAnnotation Annotation;
+            public ObjectronPlacementDebugReport? DebugReport;
         }
 
         private void PushHud(
@@ -786,50 +769,37 @@ namespace QuestObjectron
                 pcaRes = $"{Mathf.RoundToInt(res.x)}x{Mathf.RoundToInt(res.y)}";
             }
 
-            var hint = BuildHudHint(worldCenter, distHmd, m_questVisuals != null && m_questVisuals.IsLocalized);
-            var overlay2d = m_passthroughOverlay != null && m_passthroughOverlay.HasDrawn2dThisSession;
-            var depthInBoxEnabled = m_passthroughOverlay != null && m_passthroughOverlay.ShowDepthInsideBoxes;
-            var depthInBoxReady = m_passthroughOverlay != null && m_passthroughOverlay.IsDepthInBoxReady;
+            var hint = BuildHudHint(m_localizedCups.Count, MaxLocalizedCups);
             m_headsetHud.Apply(new ObjectronHudSnapshot(
                 detectState,
                 rotLabel,
                 worldCenter,
                 extent,
                 distHmd,
-                m_enable3dVisuals && m_questVisuals != null ? m_questVisuals.ActiveCount : 0,
+                m_questVisuals != null ? m_questVisuals.ActiveCount : 0,
                 objectId,
                 placementMethod == PlacementMethod.None ? m_lastPlacementMethod : placementMethod.ToString(),
                 m_frameId,
                 pcaRes,
                 hint,
-                overlay2d,
-                depthInBoxEnabled,
-                depthInBoxReady));
+                false,
+                false,
+                false));
         }
 
-        private static string BuildHudHint(Vector3? worldCenter, float distHmd, bool boxLocalized)
+        private static string BuildHudHint(int localizedCount, int maxCups)
         {
-            if (boxLocalized)
+            if (localizedCount >= maxCups)
             {
-                return "PINNED in room — A=clear 3D box";
+                return $"all {maxCups} cups localized — A=reset scan";
             }
 
-            if (!worldCenter.HasValue)
+            if (localizedCount > 0)
             {
-                return "B=pin 3D box  A=clear pin";
+                return $"localized {localizedCount}/{maxCups} — look at next cup; A=reset";
             }
 
-            var c = worldCenter.Value;
-            var hmd = Camera.main != null ? Camera.main.transform.position : Vector3.zero;
-            var yDelta = Mathf.Abs(c.y - hmd.y);
-            if (distHmd > 1f || yDelta > 0.35f)
-            {
-                return distHmd > 1f
-                    ? "hint: cup far (>1m) — B=pin when close"
-                    : "hint: check placement — B=pin  A=clear";
-            }
-
-            return "B=pin 3D box in room  A=clear  X=depth  Y=depth_src";
+            return "scanning — point at each cup; A=reset scan";
         }
 
         private static int CountKeypointsWith2D(ObjectAnnotation ann)

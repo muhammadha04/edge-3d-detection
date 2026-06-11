@@ -72,7 +72,7 @@ namespace QuestObjectron
             Apply(m_heldBoxes);
         }
 
-        /// <summary>Pin the current 3D wireframe in world space (stops following the camera).</summary>
+        /// <summary>Pin 3D wireframes in world space (environment-localized, does not follow the camera).</summary>
         public void Localize(IReadOnlyList<Vector3[]> worldBoxes)
         {
             if (worldBoxes == null || worldBoxes.Count == 0)

@@ -5,10 +5,10 @@ Quest 3 mixed-reality app that runs **MediaPipe Objectron** on **Meta Passthroug
 ## What it does
 
 - **Passthrough MR background** — see the real room through the headset
-- **3D cup detection** — Objectron model on live PCA camera frames
-- **World-space wireframe boxes** — compare model output to real objects
+- **One-shot cup localization** — each visible cup gets a stable 3D box anchored in the room (up to 3)
 - **Box Debug mode** — snapshot-style workflow with labeled X/Y/Z edges and localize/clear controls
 - **Head-roll compensation** — boxes stay upright on the mug when your head is tilted
+- **No 2D overlay in cup mode** — only environment-localized 3D wireframes (no screen-space boxes following the head)
 
 ## Requirements
 
@@ -30,8 +30,18 @@ Quest 3 mixed-reality app that runs **MediaPipe Objectron** on **Meta Passthroug
 4. **File → Build Settings → Android** → build and deploy to Quest 3.
 5. Grant **camera** and **spatial** permissions on first launch.
 6. Main menu → **Quest Objectron / Tools**:
-   - **ObjectronCupDetection** — continuous detection + pin (B) / clear (A)
+   - **ObjectronCupDetection** — scan room; each cup localized once with a stable 3D box
    - **Box Debug (snapshot)** — labeled debug box + Capture & Detect
+
+## ObjectronCupDetection flow
+
+1. Scene starts **scanning** — inference runs continuously.
+2. When a **new cup** is seen (not within ~15 cm of an already localized cup), its 3D box is **frozen in world space** immediately (same placement path as Box Debug: frame-pose pairing + roll compensation).
+3. Repeat until **3 cups** are localized (MediaPipe `maxNumObjects` limit).
+4. Already localized cups are **never updated** in this build.
+5. Press **A (right controller)** to **reset** — clear all boxes and scan again.
+
+Future work: optional “better detection” gate to replace a localized cup only when a higher-quality detection arrives.
 
 ## Architecture
 
@@ -39,7 +49,7 @@ Quest 3 mixed-reality app that runs **MediaPipe Objectron** on **Meta Passthroug
 Passthrough (MR) → PassthroughCameraAccess
   → MediaPipe Objectron (Cup)
   → ObjectronWorldPlacement (PCA pose + roll compensation + optional MRUK depth)
-  → ObjectronQuestVisuals / ObjectronLabeledBoxVisuals
+  → ObjectronQuestVisuals (environment-localized wireframes)
 ```
 
 ### Camera pose and head tilt
@@ -61,13 +71,21 @@ adb logcat -s QuestObj3D Unity
 |-----|---------|
 | `BOOT` | App / MediaPipe bootstrap |
 | `PCA` | Passthrough camera opened |
-| `DETECT` | Objectron inference / box debug |
+| `DETECT` | Objectron inference / cup localize |
 | `WORLD` | World corner placement |
 | `ERR` | Errors |
 
-Box Debug latch lines include `roll=` (head roll degrees) and `level_roll=True` when compensation is active.
+Look for `cup_localized` and `cup_scan_reset` in cup mode.
 
-## Quest controls (Box Debug)
+## Quest controls
+
+### ObjectronCupDetection
+
+| Input | Action |
+|-------|--------|
+| **A** (right) | Reset scan — clear all localized cups and start over |
+
+### Box Debug
 
 | Input | Action |
 |-------|--------|
@@ -80,11 +98,12 @@ Box Debug latch lines include `roll=` (head roll degrees) and `level_roll=True` 
 
 | Script | Role |
 |--------|------|
-| `ObjectronCupDetectionManager.cs` | Continuous detection pipeline |
+| `ObjectronCupDetectionManager.cs` | One-shot multi-cup scan + environment localize |
 | `ObjectronBoxDebugManager.cs` | Box Debug scene (latch + show) |
 | `ObjectronWorldPlacement.cs` | Camera → world corner placement |
 | `ObjectronWorldOrientation.cs` | Roll compensation + gravity align |
 | `ObjectronFramePoseQueue.cs` | Frame/pose pairing for async inference |
+| `ObjectronQuestVisuals.cs` | Green wireframe boxes (cup mode) |
 | `ObjectronLabeledBoxVisuals.cs` | Labeled wireframe (Box Debug) |
 
 ## Packages
@@ -97,6 +116,7 @@ Box Debug latch lines include `roll=` (head roll degrees) and `level_roll=True` 
 - **No detections** — Point at a clear cup ~0.5–1.5 m, improve lighting.
 - **Box tilted with head** — Ensure `CompensateHeadRoll` is enabled on placement options; rebuild after pull.
 - **Box offset** — Grant spatial permission for MRUK depth raycast.
+- **Boxes follow head** — Rebuild with latest cup mode (boxes must be localized once, not updated every frame).
 - **Detection only at odd head angles** — Adjust `PassthroughImageSource` rotation (see `README_OBJECTRON.md`).
 
 ## License

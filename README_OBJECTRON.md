@@ -27,9 +27,15 @@ Unity 6 project for **Meta Quest 3** that runs **native MediaPipe Objectron** (C
 4. If components look missing, run **QuestObjectron → Configure Objectron Cup Detection Scene**.
 5. **File → Build Settings → Android** → build and deploy to Quest 3.
 6. Grant **camera** and **spatial** permissions on first launch.
-7. Point at a **cup** in good lighting (~0.5–1.5 m).
+7. Point at **cups** in good lighting (~0.5–1.5 m). Each cup is localized **once** with a stable 3D box (max 3). Press **A** to reset and scan again.
 
 `ObjectronDisableSentis` disables the legacy Sentis/YOLO path at runtime.
+
+### Cup detection behavior
+
+- **3D only** — no 2D screen overlay in cup mode.
+- **One shot per cup** — after localization, that cup’s box stays fixed in the room until reset.
+- **Dedup** — detections within ~15 cm of an existing box are treated as the same cup.
 
 ## Logcat
 
@@ -54,8 +60,8 @@ adb logcat -s QuestObj3D Unity
 
 On Quest, a **Screen Space Camera** panel is parented to **OVRCameraRig → CenterEyeAnchor** (falls back to `Camera.main`). It shows live detect state, rotation/flip, world center, extent, distance, viz count, object id, placement, frame id, and PCA resolution.
 
-- **A (right controller)** — cycle `PassthroughImageSource` rotation (0° → 90° → 180° → 270°)
-- **B (right controller)** — toggle horizontal flip
+- **A (right controller)** in cup scene — reset cup scan (clear all localized boxes)
+- Rotation / flip tuning — use `ObjectronPlacementFixMenu` or Inspector on `PassthroughImageSource`
 
 Logcat when HUD spawns: `[HUD] ready parent=CenterEyeAnchor`
 

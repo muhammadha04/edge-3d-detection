@@ -25,12 +25,18 @@ namespace QuestObjectron
 
     public readonly struct PlacementOutput
     {
+        public readonly int ObjectId;
         public readonly Vector3[] Corners;
         public readonly PlacementMethod Method;
         public readonly ObjectronPlacementDebugReport? DebugReport;
 
-        public PlacementOutput(Vector3[] corners, PlacementMethod method, ObjectronPlacementDebugReport? debugReport)
+        public PlacementOutput(
+            int objectId,
+            Vector3[] corners,
+            PlacementMethod method,
+            ObjectronPlacementDebugReport? debugReport)
         {
+            ObjectId = objectId;
             Corners = corners;
             Method = method;
             DebugReport = debugReport;
@@ -186,7 +192,7 @@ namespace QuestObjectron
                     ObjectronPlacementDebug.LogIfChanged(output.DebugReport.Value);
                 }
 
-                results.Add(new PlacementOutput(corners, output.Method, output.DebugReport));
+                results.Add(new PlacementOutput(annotation.ObjectId, corners, output.Method, output.DebugReport));
             }
 
             return results;
@@ -200,7 +206,7 @@ namespace QuestObjectron
             var placed = TryPlaceAnnotation(annotation, cameraPose);
             if (placed.Corners == null)
             {
-                return new PlacementOutput(null, PlacementMethod.None, null);
+                return new PlacementOutput(-1, null, PlacementMethod.None, null);
             }
 
             var rawCorners = placed.Corners;
@@ -221,6 +227,7 @@ namespace QuestObjectron
                          out normViewport))
             {
                 return new PlacementOutput(
+                    annotation.ObjectId,
                     rawCorners,
                     placed.Method,
                     BuildDebugReport(annotation, cameraPose, placed.Method, placed.Method, rawCenter, rawExtent,
@@ -235,6 +242,7 @@ namespace QuestObjectron
                     out var depthMeasure))
             {
                 return new PlacementOutput(
+                    annotation.ObjectId,
                     rawCorners,
                     placed.Method,
                     BuildDebugReport(annotation, cameraPose, placed.Method, placed.Method, rawCenter, rawExtent,
@@ -335,6 +343,7 @@ namespace QuestObjectron
                     cameraPose,
                     placed.Method);
                 return new PlacementOutput(
+                    annotation.ObjectId,
                     rawCorners,
                     placed.Method,
                     BuildDebugReport(annotation, cameraPose, placed.Method, placed.Method, rawCenter, rawExtent,
@@ -370,7 +379,7 @@ namespace QuestObjectron
                 scaleAvg,
                 depthMeasure,
                 true);
-            return new PlacementOutput(finalCorners, finalMethod, debug);
+            return new PlacementOutput(annotation.ObjectId, finalCorners, finalMethod, debug);
         }
 
         private static ObjectronPlacementDebugReport BuildDebugReport(
