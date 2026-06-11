@@ -1,0 +1,41 @@
+[Licensing::Module] Trying to connect to existing licensing client channel...
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Muhammad" at "2026-05-15T08:32:40.3175577Z"
+Built from '6000.2/respin/6000.2.8f1-e4064264ae96' branch; Version is '6000.2.8f1 (c9992ac36c34) revision 13211946'; Using compiler version '194234433'; Build Type 'Release'
+OS: 'Windows 11  (10.0.26200) 64bit Education' Language: 'en' Physical Memory: 32473 MB
+BatchMode: 1, IsHumanControllingUs: 0, StartBugReporterOnCrash: 0, Is64bit: 1
+Date: 2026-05-15T08:32:40Z
+[Licensing::Client] Code 10 while verifying Licensing Client signature (process Id: 27232, path: "C:/Program Files/Unity Hub/UnityLicensingClient_V1/Unity.Licensing.Client.exe")
+[Licensing::Module] LicensingClient has failed validation; ignoring
+[Licensing::Client] Handshaking with LicensingClient:
+  Version:                 1.17.4+4293ba1
+  Session Id:              3b0180e8ea30492d882af0d8d111b17f
+  Correlation Id:          e43761e759c198dee659346ee72ea119
+  External correlation Id: 5631134454422098739
+  Machine Id:              MlJn+uJMyy+TEY5eFLl0hacs440=
+[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-Muhammad" (connect: 0.00s, validation: 0.00s, handshake: 0.08s)
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Muhammad-notifications" at "2026-05-15T08:32:40.3956897Z"
+[Licensing::Module] Error: Access token is unavailable; failed to update
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] License group:
+  Id: 18967845478919-UnityPersXXXX
+  Product: Unity Personal
+  Type: Assigned
+  Expiration: Unlimited
+[Licensing::Client] Successfully updated license, isAsync: True, time: 0.00
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] Licensing Background thread has ended after 0.09s
+
+COMMAND LINE ARGUMENTS:
+C:\Program Files\Unity\Hub\Editor\6000.2.8f1-x86_64\Editor\Unity.exe
+-batchmode
+-nographics
+-projectPath
+c:\Users\Muhammad\Documents\TestingAgents\QuestObjectron3D
+-executeMethod
+QuestObjectron.Editor.ObjectronCupDetectionSetup.ConfigureExistingSceneBatch
+-quit
+-logFile
+c:\Users\Muhammad\Documents\TestingAgents\QuestObjectron3D\setup.log
+Successfully changed project path to: c:\Users\Muhammad\Documents\TestingAgents\QuestObjectron3D
+C:/Users/Muhammad/Documents/TestingAgents/QuestObjectron3D
+Exiting without the bug reporter. Application will terminate with return code 1
