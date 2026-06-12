@@ -12,6 +12,7 @@ Quest 3 mixed-reality app that runs **MediaPipe Objectron (Chair)** on **Meta Pa
 |------|-------|----------|
 | **ObjectronChairDetection** | `ObjectronChairDetection.unity` | Auto-scan up to 3 chairs; each chair gets one environment-localized green wireframe box |
 | **Box Debug (snapshot)** | `ObjectronBoxDebug.unity` | Continuous inference + manual Capture / Localize / Clear with labeled X/Y/Z edges |
+| **Scan Calibration** | `ObjectronScanCalibration.unity` | Align `lab-chair.obj` scan to a live detection box; save relative pose for mesh overlay |
 
 Both modes:
 - Use passthrough MR (see the real room)
@@ -319,6 +320,74 @@ Passthrough MR
 | **Clear Box** or **A** | Remove box |
 | **â˜° Start** | Main menu + full session cleanup |
 
+### Scan Calibration (align `lab-chair.obj`)
+
+| Input | Action |
+|-------|--------|
+| **B** (right) | Show latched detection box |
+| **A** (right) | Clear detection box |
+| **Trigger** (right, tap) | Spawn scan mesh at aim point (once) |
+| **Grip** (right, hold) | Grab and move scan |
+| **Trigger** (right, hold) | Rotate scan with controller |
+| **Both grips** (hold) | Scale scan (pinch/stretch) |
+| **Y** (left) | Freeze scan in place |
+| **X** (left) | Save calibration JSON to device + logcat (**after** freeze) |
+| **UI panel** (right) | Same actions via raycast + trigger click |
+| **â˜° Start** | Main menu + full session cleanup |
+
+Saved on Quest: `Application.persistentDataPath/scan_calibration_chair.json`  
+Filter logcat: `SCAN_CALIBRATION_JSON`
+
+---
+
+## Lab chair mesh placement (calibration reference)
+
+Captured **2026-06-12** from `BOX_PROJ_DEBUG` (`DepthRefinedBox`, object id **4873**).  
+Full snapshot: [`Assets/ObjectronDetection/Calibration/lab-chair-detection-snapshot-2026-06-12.json`](Assets/ObjectronDetection/Calibration/lab-chair-detection-snapshot-2026-06-12.json)
+
+### Detection box (world)
+
+| Field | Value |
+|-------|-------|
+| Center (m) | `(-0.52, 0.815, 0.334)` |
+| Final edge lengths (m) | **X=0.571, Y=0.427, Z=0.265** |
+| Raw edge lengths (m) | `(0.267, 0.248, 0.137)` |
+| Mask frustum (m) | `(0.619, 0.591, 0.162)` |
+| Camera euler (deg) | `(5, 354, 1)` |
+
+### Model rotation (MediaPipe camera space)
+
+| Field | Value |
+|-------|-------|
+| Rotation euler (deg) | **(312.4, 326.6, 288.5)** |
+| Rounded for Unity | `(312, 327, 288)` |
+| Model full extents (m) | `(0.280, 0.212, 0.162)` |
+| Model half extents (m) | `(0.140, 0.106, 0.081)` |
+| Model up (world) | `(0.88, 0.20, 0.43)` |
+
+### Depth refinement scale (apply to mesh vs Objectron model)
+
+Per-axis scale factors from depth refinement (`SCALE` line in logcat):
+
+| Axis | Scale |
+|------|-------|
+| **X** | **2.140** |
+| **Y** | **1.719** |
+| **Z** | **1.929** |
+| **Average (uniform)** | **1.929** |
+
+Rounded (`MODEL_SCALED_CAM_PLANE`): `(2.14, 1.72, 1.93)`
+
+### How to use for every detection
+
+1. **Preferred:** Run **Scan Calibration** scene, align `lab-chair.obj`, press **X** — use `scanToDetection*` fields from saved JSON.
+2. **Quick test from this snapshot:** Fit an oriented box to detection corners, then:
+   - Per-axis: scale mesh using `(2.14, 1.72, 1.93)` relative to raw Objectron model size.
+   - Uniform: multiply mesh scale by **1.929**.
+   - Rotation offset: `Quaternion.Euler(312, 327, 288)` relative to detection box rotation (tune visually).
+
+Depth/model width x height from log: **2.211 x 2.789 m** (frustum space; use final world edges above for room-scale box).
+
 ---
 
 ## Logcat
@@ -333,9 +402,11 @@ adb logcat -s QuestObj3D Unity
 | `DETECT` | Inference, `chair_localized`, `chair_size_refined`, `chair_scan_reset` |
 | `WORLD` | Placement method per object id |
 | `VIZ` | Wireframe counts |
+| `BOX_PROJ_DEBUG` | Depth-refined box scale/rotation debug |
+| `DBG` | Scan calibration JSON (`SCAN_CALIBRATION_JSON`) |
 | `ERR` | Errors |
 
-Useful strings: `chair_localized`, `chair_size_refined`, `chair_scan_reset`, `objectron_session_cleanup`, `chair_detection_shutdown`, `box_debug_shutdown`.
+Useful strings: `chair_localized`, `chair_size_refined`, `chair_scan_reset`, `objectron_session_cleanup`, `chair_detection_shutdown`, `box_debug_shutdown`, `SCAN_CALIBRATION_JSON`.
 
 ---
 
@@ -353,6 +424,9 @@ Useful strings: `chair_localized`, `chair_size_refined`, `chair_scan_reset`, `ob
 | `ObjectronSessionCleanup.cs` | Menu exit / fresh session |
 | `ObjectronQuestVisuals.cs` | Green wireframes (cup mode) |
 | `ObjectronLabeledBoxVisuals.cs` | Labeled wireframe (Box Debug) |
+| `ObjectronScanCalibrationManager.cs` | Scan align + save calibration |
+| `ObjectronScanCalibrationData.cs` | Calibration record + `ApplyToDetection()` |
+| `ObjectronScanManipulator.cs` | VR grab move / rotate / scale for scan mesh |
 | `ObjectronLocalizedCupState.cs` | Runtime cup track (not Unity-serialized) |
 
 ---

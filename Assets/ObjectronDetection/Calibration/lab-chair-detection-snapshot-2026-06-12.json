@@ -1,0 +1,50 @@
+{
+  "version": "1",
+  "label": "lab-chair DepthRefinedBox capture",
+  "capturedAtUtc": "2026-06-12T13:15:33Z",
+  "source": "logcat BOX_PROJ_DEBUG",
+  "scanAssetPath": "Assets/lab-chair.obj",
+  "detection": {
+    "objectId": 4873,
+    "placementMethod": "DepthRefinedBox",
+    "centerWorldM": [-0.52, 0.815, 0.334],
+    "cameraEulerDeg": [5.0, 354.0, 1.0]
+  },
+  "modelCameraSpace": {
+    "fullExtentsM": [0.2798, 0.212, 0.162],
+    "halfExtentsM": [0.1399, 0.106, 0.081],
+    "rotationEulerDeg": [312.4, 326.59, 288.47]
+  },
+  "depthRefinementScale": {
+    "scaleX": 2.1398,
+    "scaleY": 1.719,
+    "scaleZ": 1.9294,
+    "scaleAvg": 1.9294,
+    "depthModelWidthM": 2.211,
+    "depthModelHeightM": 2.789
+  },
+  "worldEdgesM": {
+    "raw": [0.2668, 0.2484, 0.1373],
+    "final": [0.5708, 0.427, 0.2649],
+    "mask": [0.6188, 0.5912, 0.162]
+  },
+  "modelScaledCamPlane": {
+    "planeM": [0.0391, 0.1544],
+    "scale": [2.14, 1.72, 1.93]
+  },
+  "orientation": {
+    "modelUpWorld": [0.88, 0.2, 0.43],
+    "dotUpWorld": 0.2,
+    "dotUpCamForward": 0.33,
+    "pitchFromHorizonDeg": 5.0
+  },
+  "meshPlacementRecommended": {
+    "comment": "Multiply lab-chair.obj lossy scale by depthRefinementScale per axis, or uniform scaleAvg for quick tests",
+    "uniformScale": 1.9294,
+    "perAxisScale": [2.1398, 1.719, 1.9294],
+    "perAxisScaleRounded": [2.14, 1.72, 1.93],
+    "targetBoxSizeM": [0.5708, 0.427, 0.2649],
+    "rotationEulerOffsetDeg": [312.4, 326.59, 288.47],
+    "rotationEulerOffsetRoundedDeg": [312.0, 327.0, 288.0]
+  }
+}

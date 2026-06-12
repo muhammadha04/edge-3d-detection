@@ -45,7 +45,7 @@ namespace QuestObjectron
             return false;
         }
 
-        public static int FindDuplicateIndex(
+        internal static int FindDuplicateIndex(
             IReadOnlyList<ObjectronLocalizedChairState> localizedChairs,
             int objectId,
             Vector3[] candidateCorners)

@@ -74,6 +74,10 @@ namespace PassthroughCameraSamples.StartScene
                     {
                         label = "Box Debug (snapshot)";
                     }
+                    else if (label.Contains("ObjectronScanCalibration"))
+                    {
+                        label = "Scan Calibration (align mesh)";
+                    }
 
                     _ = uiBuilder.AddButton(label, () => LoadScene(scene.Item1), -1, DebugUIBuilder.DEBUG_PANE_LEFT);
                 }

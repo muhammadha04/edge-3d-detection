@@ -47,3 +47,7 @@ For the full technical pipeline (placement math, parameters, chair rules, sessio
 ### Permissions
 
 Grant **camera** and **spatial (scene)** permissions on first launch. Floor snap requires scene mesh raycasts (`USE_SCENE`).
+
+### Scan calibration & lab-chair mesh
+
+See **[README.md — Lab chair mesh placement](README.md#lab-chair-mesh-placement-calibration-reference)** for saved scale/rotation from `BOX_PROJ_DEBUG` and the JSON snapshot under `Assets/ObjectronDetection/Calibration/`.

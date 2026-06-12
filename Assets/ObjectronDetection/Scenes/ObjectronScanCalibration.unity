@@ -912,12 +912,11 @@ GameObject:
   - component: {fileID: 910001014}
   - component: {fileID: 910001015}
   - component: {fileID: 910001016}
-  - component: {fileID: 910001017}
   - component: {fileID: 910001018}
-  - component: {fileID: 910001020}
-  - component: {fileID: 910001019}
+  - component: {fileID: 910001025}
+  - component: {fileID: 910001026}
   m_Layer: 0
-  m_Name: QuestObjectron
+  m_Name: ObjectronScanCalibration
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -935,8 +934,7 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 910001022}
+  m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &910001013
@@ -948,7 +946,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 910001011}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 998bf23d7be37144a8eafa854e6f00cc, type: 3}
+  m_Script: {fileID: 11500000, guid: e1f2a3b4c5d60718293a4b5c6d7e8f01, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   m_cameraAccess: {fileID: 1373946501}
@@ -957,12 +955,9 @@ MonoBehaviour:
   m_bootstrap: {fileID: 910001003}
   m_textureFramePool: {fileID: 910001016}
   m_environmentRaycast: {fileID: 1721288809}
-  m_bboxDrawer: {fileID: 910001023}
-  m_detectionDebug: {fileID: 910001024}
-  m_questVisuals: {fileID: 910001020}
-  m_headsetHud: {fileID: 0}
-  m_passthroughOverlay: {fileID: 0}
-  m_environmentDepthProvider: {fileID: 0}
+  m_visuals: {fileID: 910001025}
+  m_scanManipulator: {fileID: 910001026}
+  m_scanModelPrefab: {fileID: 0}
   m_placementOptions:
     MirrorInferenceHorizontal: 1
     UseUnityCameraFrame: 1
@@ -971,12 +966,9 @@ MonoBehaviour:
     AutoPickLegacyRotationFrame: 0
     EnableTableSnap: 0
     CompensateHeadRoll: 1
-    ConstrainUprightOnTable: 0
-    EnableFloorSnap: 0
-    DisableMaskAlignedFallback: 0
   m_runningMode: 0
-  m_minDetectionConfidence: 0.35
-  m_minTrackingConfidence: 0.55
+  m_minDetectionConfidence: 0.5
+  m_minTrackingConfidence: 0.5
 --- !u!114 &910001014
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1008,7 +1000,7 @@ MonoBehaviour:
   _gpuConfig: {fileID: 4900000, guid: b879658ff2b804213844d38d49d1d85a, type: 3}
   _openGlEsConfig: {fileID: 4900000, guid: 8d3e2ce0c5dd4ac1fbd438fc86427ec4, type: 3}
   _timeoutMicrosec: 50000
-  category: 1
+  category: 2
   maxNumObjects: 3
 --- !u!114 &910001016
 MonoBehaviour:
@@ -1023,19 +1015,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _poolSize: 3
---- !u!114 &910001017
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 910001011}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: dbef47164fae77a4ba91ed02d644bfe2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_manager: {fileID: 910001013}
 --- !u!114 &910001018
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1048,7 +1027,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 350a9231407db7e49a021018d4ffe4ea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!114 &910001019
+--- !u!114 &910001025
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -1057,29 +1036,30 @@ MonoBehaviour:
   m_GameObject: {fileID: 910001011}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7e48271356bdb1f4ca6f5cd29e1f0661, type: 3}
+  m_Script: {fileID: 11500000, guid: a1b2c3d4e5f60718293a4b5c6d7e8f92, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::QuestObjectron.ObjectronEnvironmentDepthProvider
-  m_usePreprocessed: 1
-  m_requestScenePermissionOnStart: 1
-  m_passthroughDim: 0
---- !u!114 &910001020
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 910001011}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2fc4f1114e5731d4b8c8c69eb07e8b05, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::QuestObjectron.ObjectronQuestVisuals
-  m_holdSeconds: 1.5
-  m_wireframeWidth: 0.014
+  m_EditorClassIdentifier: 
+  m_wireframeWidth: 0.004
   m_wireframeColor: {r: 0.15, g: 1, b: 0.35, a: 1}
-  m_tableDotDiameterM: 0.018
-  m_tableDotColor: {r: 0.2, g: 0.45, b: 1, a: 1}
+  m_edgeLabelFontSize: 28
+  m_centerLabelFontSize: 22
+--- !u!114 &910001026
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910001011}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e1f2a3b4c5d60718293a4b5c6d7e8f02, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_scanModelPrefab: {fileID: 0}
+  m_resourcesPrefabPath: ScanCalibration/LabChair
+  m_raycastMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
 --- !u!1 &910001021
 GameObject:
   m_ObjectHideFlags: 0
@@ -1091,9 +1071,6 @@ GameObject:
   - component: {fileID: 910001022}
   - component: {fileID: 910001023}
   - component: {fileID: 910001024}
-  - component: {fileID: 910001027}
-  - component: {fileID: 910001026}
-  - component: {fileID: 910001025}
   m_Layer: 0
   m_Name: WorldBoundingBoxes
   m_TagString: Untagged
@@ -1110,7 +1087,7 @@ Transform:
   m_GameObject: {fileID: 910001021}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0.912}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1147,84 +1124,6 @@ MonoBehaviour:
   m_crossArmLength: 0.12
   m_showWorldMarkers: 0
   m_showOnGuiHud: 1
---- !u!64 &910001025
-MeshCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 910001021}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 5
-  m_Convex: 0
-  m_CookingOptions: 30
-  m_Mesh: {fileID: 0}
---- !u!23 &910001026
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 910001021}
-  m_Enabled: 1
-  m_CastShadows: 1
-  m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
-  m_StaticShadowCaster: 0
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RayTraceProcedural: 0
-  m_RayTracingAccelStructBuildFlagsOverride: 0
-  m_RayTracingAccelStructBuildFlags: 1
-  m_SmallMeshCulling: 1
-  m_ForceMeshLod: -1
-  m_MeshLodSelectionBias: 0
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 0}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_GlobalIlluminationMeshLod: 0
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
-  m_AdditionalVertexStreams: {fileID: 0}
---- !u!33 &910001027
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 910001021}
-  m_Mesh: {fileID: 0}
 --- !u!1 &1144808057
 GameObject:
   m_ObjectHideFlags: 0

@@ -34,6 +34,14 @@ namespace QuestObjectron
                 manager.ShutdownForSceneExit();
             }
 
+            var scanCalibrationManagers = Object.FindObjectsByType<ObjectronScanCalibrationManager>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            foreach (var manager in scanCalibrationManagers)
+            {
+                manager.ShutdownForSceneExit();
+            }
+
             var questVisuals = Object.FindObjectsByType<ObjectronQuestVisuals>(
                 FindObjectsInactive.Include,
                 FindObjectsSortMode.None);
