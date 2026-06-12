@@ -66,6 +66,22 @@ namespace QuestObjectron
                 drawer.SetDetections(null);
             }
 
+            var depthVisualizers = Object.FindObjectsByType<EnvironmentDepthVisualizationManager>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            foreach (var depthViz in depthVisualizers)
+            {
+                depthViz.ShutdownForSceneExit();
+            }
+
+            var depthProviders = Object.FindObjectsByType<ObjectronEnvironmentDepthProvider>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            foreach (var depthProvider in depthProviders)
+            {
+                depthProvider.ShutdownForSceneExit();
+            }
+
             BeginFreshSession();
             QuestObjectronLogger.Boot("objectron_session_cleanup complete");
         }

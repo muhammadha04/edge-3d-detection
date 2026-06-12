@@ -136,14 +136,14 @@ namespace QuestObjectron
 
         private IEnumerator Start()
         {
-            if (m_shutdownForSceneExit)
-            {
-                QuestObjectronLogger.Boot("box_debug_restart after early shutdown");
-                m_shutdownForSceneExit = false;
-            }
-
+            m_shutdownForSceneExit = false;
             yield return WaitForPermissions();
             yield return WaitForBootstrap();
+            if (m_shutdownForSceneExit)
+            {
+                yield break;
+            }
+
             m_pipeline = StartCoroutine(RunPipeline());
         }
 
@@ -155,11 +155,11 @@ namespace QuestObjectron
 
         public void ShutdownForSceneExit()
         {
-            if (m_shutdownForSceneExit)
-            {
-                return;
-            }
+            CleanupActiveSession();
+        }
 
+        private void CleanupActiveSession()
+        {
             m_shutdownForSceneExit = true;
             m_visuals?.Clear();
             m_lastCorners = null;
@@ -190,6 +190,7 @@ namespace QuestObjectron
             m_framePoses.Clear();
             m_graphReady = false;
             m_objectronGraph?.Stop();
+            m_imageSource?.Stop();
 
             if (m_imageSource != null && ImageSourceProvider.ImageSource == m_imageSource)
             {
@@ -201,7 +202,7 @@ namespace QuestObjectron
 
         private void OnDestroy()
         {
-            ShutdownForSceneExit();
+            CleanupActiveSession();
         }
 
         public void CaptureAndDetect()

@@ -285,24 +285,24 @@ namespace QuestObjectron
 
         private IEnumerator Start()
         {
-            if (m_shutdownForSceneExit)
-            {
-                QuestObjectronLogger.Boot("chair_detection_restart after early shutdown");
-                m_shutdownForSceneExit = false;
-            }
-
+            m_shutdownForSceneExit = false;
             yield return WaitForPermissions();
             yield return WaitForBootstrap();
+            if (m_shutdownForSceneExit)
+            {
+                yield break;
+            }
+
             m_pipeline = StartCoroutine(RunPipeline());
         }
 
         public void ShutdownForSceneExit()
         {
-            if (m_shutdownForSceneExit)
-            {
-                return;
-            }
+            CleanupActiveSession();
+        }
 
+        private void CleanupActiveSession()
+        {
             m_shutdownForSceneExit = true;
             ClearLocalizedStateSilent();
             m_frameId = 0;
@@ -330,6 +330,7 @@ namespace QuestObjectron
             m_framePoses.Clear();
             m_graphReady = false;
             m_objectronGraph?.Stop();
+            m_imageSource?.Stop();
 
             if (m_imageSource != null && ImageSourceProvider.ImageSource == m_imageSource)
             {
@@ -343,7 +344,7 @@ namespace QuestObjectron
         {
             if (Application.isPlaying)
             {
-                ShutdownForSceneExit();
+                CleanupActiveSession();
             }
         }
 

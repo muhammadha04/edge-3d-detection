@@ -25,6 +25,7 @@ namespace QuestObjectron
         private OVRPassthroughLayer m_passthroughLayer;
         private float m_savedPassthroughOpacity = 1f;
         private bool m_depthPipelineActive;
+        private bool m_tornDown;
 
         private void Awake()
         {
@@ -263,9 +264,47 @@ namespace QuestObjectron
                    || OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.LTouch);
         }
 
+        public void ShutdownForSceneExit()
+        {
+            if (m_tornDown)
+            {
+                return;
+            }
+
+            m_tornDown = true;
+            m_depthPipelineActive = false;
+            StopAllCoroutines();
+            RestorePassthrough();
+            DestroyDepthUi();
+            DestroyDepthManager();
+        }
+
+        private void DestroyDepthUi()
+        {
+            if (m_canvas != null)
+            {
+                Destroy(m_canvas.gameObject);
+                m_canvas = null;
+                m_depthImage = null;
+                m_statusLabel = null;
+            }
+        }
+
+        private void DestroyDepthManager()
+        {
+            if (m_depthManager == null)
+            {
+                return;
+            }
+
+            m_depthManager.enabled = false;
+            Destroy(m_depthManager);
+            m_depthManager = null;
+        }
+
         private void OnDestroy()
         {
-            RestorePassthrough();
+            ShutdownForSceneExit();
             if (m_depthMaterial != null && m_depthMaterial.shader != null
                 && m_depthMaterial.shader.name.StartsWith("QuestObjectron/"))
             {

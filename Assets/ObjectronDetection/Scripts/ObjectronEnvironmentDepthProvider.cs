@@ -33,8 +33,33 @@ namespace QuestObjectron
 
         private void Start()
         {
-            StartCoroutine(StartDepthPipeline());
+            if (!m_shutdownForSceneExit)
+            {
+                StartCoroutine(StartDepthPipeline());
+            }
         }
+
+        public void ShutdownForSceneExit()
+        {
+            m_shutdownForSceneExit = true;
+            StopAllCoroutines();
+            m_pipelineStarted = false;
+            m_loggedReady = false;
+            m_loggedFailed = false;
+            if (m_depthManager != null)
+            {
+                m_depthManager.enabled = false;
+                Destroy(m_depthManager);
+                m_depthManager = null;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            ShutdownForSceneExit();
+        }
+
+        private bool m_shutdownForSceneExit;
 
         private IEnumerator StartDepthPipeline()
         {
