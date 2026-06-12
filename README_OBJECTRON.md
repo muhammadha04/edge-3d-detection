@@ -41,4 +41,9 @@ For the full technical pipeline (placement math, parameters, chair rules, sessio
 - **3D only** — no 2D screen overlay in chair scan mode.
 - **One shot per chair** — after localization, that chair's box stays fixed in the room until reset.
 - **Dedup** — detections within ~50 cm of an existing box are treated as the same chair.
+- **Upright on floor** — box is constrained upright; bottom face must snap to the floor via Meta Scene API (`EnvironmentRaycastManager`). Detections without a valid floor hit are rejected.
 - **Size refinement** — optional improvement against reference dimensions ~45×45×90 cm.
+
+### Permissions
+
+Grant **camera** and **spatial (scene)** permissions on first launch. Floor snap requires scene mesh raycasts (`USE_SCENE`).

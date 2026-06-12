@@ -201,7 +201,20 @@ Assumes the mug sits on a **flat horizontal surface** (only yaw varies):
 2. **New chair** â€” center not within **50 cm** of any already-localized chair â†’ box is **frozen** in world space immediately.
 3. **Same chair** â€” center within 50 cm â†’ no second box; optional **size refinement** only (see below).
 4. Stops adding new chairs at **3** (`MaxLocalizedChairs` = MediaPipe `maxNumObjects`).
-5. **No 2D overlay** â€” `ObjectronPassthroughOverlay` disabled; no screen-space boxes.
+5. **No 2D overlay** — `ObjectronPassthroughOverlay` disabled; no screen-space boxes.
+6. **Floor required** — a chair is only localized if its box bottom snaps to the Meta Scene API floor (see below).
+
+### Floor snap (Meta Scene API)
+
+Chairs must sit **upright on the floor**. After Objectron placement:
+
+1. `TryConstrainUprightOnTable` — rebuilds the box with world +Y vertical and yaw from the model (no camera billboard).
+2. `ObjectronFloorPlaneSnap.TrySnapBoxToFloor` — casts rays **downward** through the bottom face corners using Meta **`EnvironmentRaycastManager`** (Scene mesh / `USE_SCENE` permission).
+3. If floor snap fails (no spatial permission, too few ray hits, or lift out of range), that detection is **skipped** — no wireframe is placed.
+
+Logcat: `floor_snap` (success) or `floor_snap_skip` / `placement=floor_snap_failed` (rejected).
+
+**Requires spatial permission** (`com.oculus.permission.USE_SCENE`) — grant when prompted on first launch alongside camera access.
 
 ### Size refinement (`ObjectronChairSizeFit`)
 
@@ -222,6 +235,9 @@ Set in `ObjectronChairDetectionManager.Awake()`:
 | Option | Value | Reason |
 |--------|-------|--------|
 | `CompensateHeadRoll` | `true` | Level camera pose for world mapping |
+| `ConstrainUprightOnTable` | `true` | Chair upright on horizontal floor plane |
+| `EnableFloorSnap` | `true` | Snap box bottom to Scene API floor (required to localize) |
+| `DisableMaskAlignedFallback` | `true` | No camera-facing billboard boxes |
 | `MirrorInferenceHorizontal` | from `PassthroughImageSource.isHorizontallyFlipped` | Align with PCA flip |
 
 ### MediaPipe tuning (inspector / scene)
@@ -272,14 +288,15 @@ Both **ObjectronChairDetection** and **Box Debug** reset to zero when leaving or
 Passthrough MR
   â””â”€ PassthroughCameraAccess (pose + ViewportPointToRay)
        â””â”€ PassthroughImageSource â†’ TextureFramePool
-            â””â”€ ObjectronGraph (Cup, async)
-                 â””â”€ FrameAnnotation
-                      â””â”€ ObjectronWorldPlacement
-                           â”œâ”€ camera-local pose (MediaPipe frame fixes)
-                           â”œâ”€ optional depth / MRUK refinement
-                           â”œâ”€ TryAlignBoxToGravity
-                           â””â”€ TryConstrainUprightOnTable (cup mode)
-                                â””â”€ ObjectronQuestVisuals / ObjectronLabeledBoxVisuals
+            └─ ObjectronGraph (Chair, async)
+                 └─ FrameAnnotation
+                      └─ ObjectronWorldPlacement
+                           ├─ camera-local pose (MediaPipe frame fixes)
+                           ├─ optional depth / MRUK refinement
+                           ├─ TryAlignBoxToGravity
+                           ├─ TryConstrainUprightOnTable (chair upright)
+                           └─ ObjectronFloorPlaneSnap (Meta Scene API floor)
+                                └─ ObjectronQuestVisuals / ObjectronLabeledBoxVisuals
 ```
 
 ---
@@ -332,6 +349,7 @@ Useful strings: `chair_localized`, `chair_size_refined`, `chair_scan_reset`, `ob
 | `ObjectronWorldOrientation.cs` | Roll compensation, gravity align, upright-on-table |
 | `ObjectronFramePoseQueue.cs` | Frame/pose pairing for async inference |
 | `ObjectronChairSizeFit.cs` | Reference chair size scoring |
+| `ObjectronFloorPlaneSnap.cs` | Meta Scene API floor raycast + vertical snap |
 | `ObjectronSessionCleanup.cs` | Menu exit / fresh session |
 | `ObjectronQuestVisuals.cs` | Green wireframes (cup mode) |
 | `ObjectronLabeledBoxVisuals.cs` | Labeled wireframe (Box Debug) |

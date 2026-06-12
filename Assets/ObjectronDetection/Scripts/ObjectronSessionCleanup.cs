@@ -12,6 +12,7 @@ namespace QuestObjectron
             ObjectronQuestVisuals.DestroyPersistentWorldRoot();
             ObjectronLabeledBoxVisuals.DestroyPersistentWorldRoot();
             ObjectronTablePlaneSnap.ClearAllSmoothedTableY();
+            ObjectronFloorPlaneSnap.ClearAllSmoothedFloorY();
         }
 
         /// <summary>Stop inference and remove all Objectron state when returning to the main menu.</summary>

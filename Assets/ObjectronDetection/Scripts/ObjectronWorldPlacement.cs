@@ -21,6 +21,8 @@ namespace QuestObjectron
         ModelOrientedMaskBox,
         /// <summary>Model-oriented box leveled on table plane + scene raycast vertical snap.</summary>
         TableSnappedBox,
+        /// <summary>Box bottom snapped to Meta Scene API floor surface.</summary>
+        FloorSnappedBox,
     }
 
     public readonly struct PlacementOutput
@@ -188,16 +190,37 @@ namespace QuestObjectron
                     ObjectronWorldOrientation.TryConstrainUprightOnTable(corners);
                 }
 
+                var finalMethod = output.Method;
+                if (m_options.EnableFloorSnap)
+                {
+                    var modelHalf = ObjectronPlacementDebug.GetModelHalfExtents(annotation);
+                    if (!ObjectronFloorPlaneSnap.TrySnapBoxToFloor(
+                            m_raycast,
+                            annotation.ObjectId,
+                            corners,
+                            modelHalf,
+                            out var floored,
+                            out _,
+                            out _))
+                    {
+                        QuestObjectronLogger.World($"objectId={annotation.ObjectId} placement=floor_snap_failed");
+                        continue;
+                    }
+
+                    System.Array.Copy(floored, corners, floored.Length);
+                    finalMethod = PlacementMethod.FloorSnappedBox;
+                }
+
                 ObjectronBoxValidation.TryGetExtentMeters(corners, out var extent);
                 QuestObjectronLogger.World(
-                    $"objectId={annotation.ObjectId} method={output.Method} center={corners[0]:F2} extent={extent:F3}m");
+                    $"objectId={annotation.ObjectId} method={finalMethod} center={corners[0]:F2} extent={extent:F3}m");
 
                 if (output.DebugReport.HasValue)
                 {
                     ObjectronPlacementDebug.LogIfChanged(output.DebugReport.Value);
                 }
 
-                results.Add(new PlacementOutput(annotation.ObjectId, corners, output.Method, output.DebugReport));
+                results.Add(new PlacementOutput(annotation.ObjectId, corners, finalMethod, output.DebugReport));
             }
 
             return results;

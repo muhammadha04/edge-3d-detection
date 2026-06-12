@@ -221,6 +221,9 @@ namespace QuestObjectron
             }
 
             m_placementOptions.CompensateHeadRoll = true;
+            m_placementOptions.ConstrainUprightOnTable = true;
+            m_placementOptions.EnableFloorSnap = true;
+            m_placementOptions.DisableMaskAlignedFallback = true;
             SyncPlacementOptionsFromImageSource();
             ObjectronPlacementFixSettings.Active = m_placementOptions;
             m_worldPlacement = new ObjectronWorldPlacement(
