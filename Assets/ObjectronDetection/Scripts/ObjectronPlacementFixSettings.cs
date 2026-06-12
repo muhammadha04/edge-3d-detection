@@ -1,4 +1,4 @@
-// Deprecated: use ObjectronPlacementOptions on ObjectronCupDetectionManager. Menu syncs via PlacementOptions.
+// Deprecated: use ObjectronPlacementOptions on ObjectronChairDetectionManager. Menu syncs via PlacementOptions.
 
 namespace QuestObjectron
 {

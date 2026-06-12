@@ -11,7 +11,7 @@ namespace QuestObjectron.Editor
     public static class ObjectronBoxDebugSetup
     {
         private const string ScenePath = "Assets/ObjectronDetection/Scenes/ObjectronBoxDebug.unity";
-        private const string TemplateScenePath = "Assets/ObjectronDetection/Scenes/ObjectronCupDetection.unity";
+        private const string TemplateScenePath = "Assets/ObjectronDetection/Scenes/ObjectronChairDetection.unity";
 
         [MenuItem("QuestObjectron/Create Box Debug Scene")]
         public static void CreateBoxDebugScene()

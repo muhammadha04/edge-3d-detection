@@ -1,4 +1,4 @@
-// Tear down Objectron detection when leaving cup/box scenes for the start menu.
+// Tear down Objectron detection when leaving chair/box scenes for the start menu.
 
 using UnityEngine;
 
@@ -17,10 +17,10 @@ namespace QuestObjectron
         /// <summary>Stop inference and remove all Objectron state when returning to the main menu.</summary>
         public static void LeaveObjectronScene()
         {
-            var cupManagers = Object.FindObjectsByType<ObjectronCupDetectionManager>(
+            var chairManagers = Object.FindObjectsByType<ObjectronChairDetectionManager>(
                 FindObjectsInactive.Include,
                 FindObjectsSortMode.None);
-            foreach (var manager in cupManagers)
+            foreach (var manager in chairManagers)
             {
                 manager.ShutdownForSceneExit();
             }

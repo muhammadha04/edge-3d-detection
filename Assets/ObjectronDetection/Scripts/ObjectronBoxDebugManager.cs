@@ -1,4 +1,4 @@
-// Box debug: continuous inference (same as ObjectronCupDetectionManager), show labeled box on Capture.
+// Box debug: continuous inference (same as ObjectronChairDetectionManager), show labeled box on Capture.
 
 using System.Collections;
 using System.Collections.Generic;
@@ -210,7 +210,7 @@ namespace QuestObjectron
                 m_visuals?.Clear();
                 m_state = BoxDebugState.NoDetection;
                 QuestObjectronLogger.Detect(
-                    $"box_debug no cup latched yet (live_count={m_liveDetectionCount}) — point at mug, wait a moment, retry");
+                    $"box_debug no chair latched yet (live_count={m_liveDetectionCount}) — point at chair, wait a moment, retry");
                 return;
             }
 
@@ -548,7 +548,7 @@ namespace QuestObjectron
                 return;
             }
 
-            m_objectronGraph.category = ObjectronGraph.Category.Cup;
+            m_objectronGraph.category = ObjectronGraph.Category.Chair;
             m_objectronGraph.maxNumObjects = 3;
             m_objectronGraph.minDetectionConfidence = m_minDetectionConfidence;
             m_objectronGraph.minTrackingConfidence = m_minTrackingConfidence;

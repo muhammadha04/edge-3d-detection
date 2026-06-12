@@ -21,7 +21,7 @@ EditorBuildSettings:
     path: Assets/PassthroughCameraApiSamples/MultiObjectDetection/MultiObjectDetection.unity
     guid: 20c230cce46443841b5727b1d6100bfc
   - enabled: 1
-    path: Assets/ObjectronDetection/Scenes/ObjectronCupDetection.unity
+    path: Assets/ObjectronDetection/Scenes/ObjectronChairDetection.unity
     guid: a7f3c2e81b4d4f0a9e6d2c8b5f104e92
   - enabled: 1
     path: Assets/ObjectronDetection/Scenes/EnvironmentDepthVisualization.unity

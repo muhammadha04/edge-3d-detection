@@ -1,8 +1,10 @@
-# Quest 3 Passthrough 3D Object Detection (MediaPipe Objectron — Cup)
+# Quest 3 Passthrough 3D Object Detection (MediaPipe Objectron — Chair)
 
-Unity 6 project for **Meta Quest 3** that runs **native MediaPipe Objectron** (Cup model) on **Passthrough Camera API** frames and draws **world-space 3D wireframe boxes** over detected cups. Inference uses **homuler MediaPipeUnityPlugin** (not Unity Inference Engine / Sentis).
+Unity 6 project for **Meta Quest 3** that runs **native MediaPipe Objectron** (Chair model) on **Passthrough Camera API** frames and draws **world-space 3D wireframe boxes** over detected chairs. Inference uses **homuler MediaPipeUnityPlugin** (not Unity Inference Engine / Sentis).
 
-For the full technical pipeline (placement math, parameters, cup rules, session cleanup), see **[README.md](README.md)**.
+> **Branch `chair`:** This branch detects chairs instead of cups. Use `main` for cup/mug detection.
+
+For the full technical pipeline (placement math, parameters, chair rules, session cleanup), see **[README.md](README.md)**.
 
 ## Requirements
 
@@ -15,78 +17,28 @@ For the full technical pipeline (placement math, parameters, cup rules, session 
 
 - Meta MRUK (via sample `manifest.json`)
 - `com.github.homuler.mediapipe` **v0.11.0** (local package under `Packages/com.github.homuler.mediapipe`)
-- `com.unity.ai.inference` kept only so Meta’s sample Sentis scripts compile; **Objectron uses MediaPipe**, and `ObjectronDisableSentis` disables YOLO at runtime
+- `com.unity.ai.inference` kept only so Meta's sample Sentis scripts compile; **Objectron uses MediaPipe**, and `ObjectronDisableSentis` disables YOLO at runtime
 
 ## Quick start
 
 1. Open `QuestObjectron3D` in Unity 6.
 2. Run **Meta → Tools → Project Setup Tool** → Fix all / Apply all.
-3. Open scene **`Assets/ObjectronDetection/Scenes/ObjectronCupDetection.unity`** — pre-configured with:
-   - **Bootstrap** (Streaming Assets loader, CPU inference)
-   - **QuestObjectron** (`ObjectronCupDetectionManager`, `ObjectronGraph` Cup + `objectron_cpu.txt`, `PassthroughImageSource`, `TextureFramePool` size 10, `ObjectronSceneReferences`, `ObjectronDisableSentis`)
+3. Ensure `Assets/StreamingAssets/object_detection_3d_chair.bytes` exists (copied from MediaPipe package resources).
+4. Open scene **`Assets/ObjectronDetection/Scenes/ObjectronChairDetection.unity`** — pre-configured with:
+   - **Bootstrap** (Streaming Assets loader, GPU inference on Android)
+   - **QuestObjectron** (`ObjectronChairDetectionManager`, `ObjectronGraph` Chair, `PassthroughImageSource`, `TextureFramePool`, `ObjectronSceneReferences`, `ObjectronDisableSentis`)
    - Child **WorldBoundingBoxes** with `OrientedBBoxDrawer`
    - References wired to **PassthroughCameraAccess** and **EnvironmentRaycast** from the Meta prefabs
-4. If components look missing, run **QuestObjectron → Configure Objectron Cup Detection Scene**.
-5. **File → Build Settings → Android** → build and deploy to Quest 3.
-6. Grant **camera** and **spatial** permissions on first launch.
-7. Point at **cups** in good lighting (~0.5–1.5 m). Each cup is localized **once** with a stable 3D box (max 3). Press **A** to reset and scan again.
+5. If components look missing, run **QuestObjectron → Configure Objectron Chair Detection Scene**.
+6. **File → Build Settings → Android** → build and deploy to Quest 3.
+7. Grant **camera** and **spatial** permissions on first launch.
+8. Point at **chairs** (~1–3 m). Each chair is localized **once** with a stable 3D box (max 3). Press **Y (left controller)** to reset and scan again.
 
 `ObjectronDisableSentis` disables the legacy Sentis/YOLO path at runtime.
 
-### Cup detection behavior
+### Chair detection behavior
 
-- **3D only** — no 2D screen overlay in cup mode.
-- **One shot per cup** — after localization, that cup’s box stays fixed in the room until reset.
-- **Dedup** — detections within ~15 cm of an existing box are treated as the same cup.
-
-## Logcat
-
-```bash
-adb logcat -s QuestObj3D Unity
-```
-
-| Tag step | Meaning |
-|----------|---------|
-| `BOOT` | App / MediaPipe bootstrap |
-| `PERM` | Camera / spatial permissions |
-| `PCA` | Passthrough camera opened |
-| `FRAME` | Periodic frame stats |
-| `DETECT` | Objectron inference |
-| `POSE` | Per-object pose |
-| `WORLD` | World corner placement |
-| `VIZ` | Box count drawn |
-| `HUD` | Headset debug overlay ready |
-| `ERR` | Errors |
-
-## Headset debug HUD
-
-On Quest, a **Screen Space Camera** panel is parented to **OVRCameraRig → CenterEyeAnchor** (falls back to `Camera.main`). It shows live detect state, rotation/flip, world center, extent, distance, viz count, object id, placement, frame id, and PCA resolution.
-
-- **A (right controller)** in cup scene — reset cup scan (clear all localized boxes)
-- Rotation / flip tuning — use `ObjectronPlacementFixMenu` or Inspector on `PassthroughImageSource`
-
-Logcat when HUD spawns: `[HUD] ready parent=CenterEyeAnchor`
-
-`OnGUI` debug in `ObjectronDetectionDebug` is disabled on device builds by default; use the headset HUD instead.
-
-## Architecture
-
-```
-Passthrough (Building Blocks) → PassthroughCameraAccess → TextureFrame → ObjectronGraph (Cup, native)
-  → FrameAnnotation → ObjectronWorldPlacement (PCA ray + MRUK depth) → OrientedBBoxDrawer
-```
-
-## Troubleshooting
-
-- **`DllNotFoundException: mediapipe_jni`**: Player Settings → **ARM64** only, IL2CPP; confirm `mediapipe_android.aar` is in the MediaPipe package.
-- **No detections**: Use a clear cup, improve lighting; check `DETECT empty` in logcat.
-- **Detections only when you yaw the headset ~-90°** (not when changing rotation in the Inspector alone): the PCA buffer is landscape while Objectron expects upright framing. Default is **Rotation270** on `PassthroughImageSource`. On device, press **A** to cycle rotation and **B** to flip. If mug appears only with head yaw, try **Rotation0** + flip combinations (see Meta `PassthroughCameraApiSamples/CameraToWorld`).
-- **No pink/green viz in headset** but `[VIZ]` in logcat: visuals live under **`ObjectronVisualsRoot`** (DontDestroyOnLoad) with **Sprites/Default**, ZWrite off, queue 5000. Check `active_in_hierarchy=true` in `[VIZ]` lines.
-- **Boxes offset**: Enable spatial permission for MRUK depth raycast; adjust fallback distance in `ObjectronWorldPlacement.cs`.
-- **Black screen**: Run Project Setup Tool; enable Passthrough on `[BuildingBlock] Passthrough`.
-
-## References
-
-- [Unity-PassthroughCameraApiSamples](https://github.com/oculus-samples/Unity-PassthroughCameraApiSamples)
-- [homuler/MediaPipeUnityPlugin](https://github.com/homuler/MediaPipeUnityPlugin) (v0.11.0 for Objectron)
-- [MediaPipe Objectron (legacy)](https://developers.google.com/mediapipe/solutions/guide#legacy)
+- **3D only** — no 2D screen overlay in chair scan mode.
+- **One shot per chair** — after localization, that chair's box stays fixed in the room until reset.
+- **Dedup** — detections within ~50 cm of an existing box are treated as the same chair.
+- **Size refinement** — optional improvement against reference dimensions ~45×45×90 cm.

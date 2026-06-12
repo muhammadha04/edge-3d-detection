@@ -252,7 +252,7 @@ namespace QuestObjectron
                 return;
             }
 
-            var manager = FindAnyObjectByType<ObjectronCupDetectionManager>();
+            var manager = FindAnyObjectByType<ObjectronChairDetectionManager>();
             if (manager != null)
             {
                 ObjectronPlacementFixSettings.Active = manager.PlacementOptions;

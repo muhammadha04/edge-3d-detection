@@ -1,4 +1,4 @@
-// Main pipeline: PCA camera -> MediaPipe Objectron (Cup) -> world-space bounding boxes.
+// Main pipeline: PCA camera -> MediaPipe Objectron (Chair) -> world-space bounding boxes.
 
 using System;
 using System.Collections;
@@ -13,14 +13,14 @@ using UnityEngine;
 
 namespace QuestObjectron
 {
-    public class ObjectronCupDetectionManager : MonoBehaviour
+    public class ObjectronChairDetectionManager : MonoBehaviour
     {
         private const int InferenceEveryNFrames = 2;
         /// <summary>Min interval between main-thread detection process + ok logs (stops objectId 1–21 spam).</summary>
         private const float DetectionProcessMinInterval = 0.2f;
-        /// <summary>Two cup centers closer than this are treated as the same mug.</summary>
-        private const float SameCupCenterRadiusM = 0.15f;
-        private const int MaxLocalizedCups = 3;
+        /// <summary>Two chair centers closer than this are treated as the same chair.</summary>
+        private const float SameChairCenterRadiusM = 0.5f;
+        private const int MaxLocalizedChairs = 3;
 
         [Header("Meta / MediaPipe")]
         [SerializeField] private PassthroughCameraAccess m_cameraAccess;
@@ -61,14 +61,14 @@ namespace QuestObjectron
         private string m_lastPlacementMethod = "—";
         private List<Vector3[]> m_lastWorldBoxes;
         private ObjectronPinSnapshot m_lastPinSnapshot;
-        [NonSerialized] private List<ObjectronLocalizedCupState> m_localizedCups = new();
+        [NonSerialized] private List<ObjectronLocalizedChairState> m_localizedChairs = new();
         private int m_lastLoggedLocalizedCount = -1;
         private bool m_shutdownForSceneExit;
         private float m_lastResetButtonTime = -999f;
         private const float ResetButtonCooldownSec = 1f;
 
-        public int LocalizedCupCount => m_localizedCups.Count;
-        public bool Scanning => m_localizedCups.Count < MaxLocalizedCups;
+        public int LocalizedChairCount => m_localizedChairs.Count;
+        public bool Scanning => m_localizedChairs.Count < MaxLocalizedChairs;
 
         public void WireReferences(
             PassthroughCameraAccess cameraAccess,
@@ -174,10 +174,10 @@ namespace QuestObjectron
 #endif
         }
 
-        /// <summary>Clear localized cups without user-facing reset logs (scene exit / shutdown).</summary>
+        /// <summary>Clear localized chairs without user-facing reset logs (scene exit / shutdown).</summary>
         private void ClearLocalizedStateSilent()
         {
-            m_localizedCups.Clear();
+            m_localizedChairs.Clear();
             m_lastWorldBoxes = null;
             m_lastLoggedLocalizedCount = -1;
             m_questVisuals?.ClearLocalization(silent: true);
@@ -185,11 +185,11 @@ namespace QuestObjectron
             m_bboxDrawer?.SetDetections(null);
         }
 
-        /// <summary>Clear all localized cups and restart the one-shot scan (Y on left controller).</summary>
+        /// <summary>Clear all localized chairs and restart the one-shot scan (Y on left controller).</summary>
         public void ResetDetection()
         {
             ClearLocalizedStateSilent();
-            QuestObjectronLogger.Detect("cup_scan_reset — point at cups to localize (max 3)");
+            QuestObjectronLogger.Detect("chair_scan_reset — point at chairs to localize (max 3)");
         }
 
         private void MaybeLogRotationHint()
@@ -207,13 +207,13 @@ namespace QuestObjectron
 
             m_lastRotationHintTime = now;
             QuestObjectronLogger.Boot(
-                $"controls: Y (left)=reset cup scan (rotation={m_imageSource.rotation} flip={m_imageSource.isHorizontallyFlipped})");
+                $"controls: Y (left)=reset chair scan (rotation={m_imageSource.rotation} flip={m_imageSource.isHorizontallyFlipped})");
         }
 
         private void Awake()
         {
             m_shutdownForSceneExit = false;
-            m_localizedCups ??= new List<ObjectronLocalizedCupState>();
+            m_localizedChairs ??= new List<ObjectronLocalizedChairState>();
             QuestObjectronLogger.Boot($"version={Application.version} unity={Application.unityVersion} platform={Application.platform}");
             if (m_placementOptions == null)
             {
@@ -268,7 +268,7 @@ namespace QuestObjectron
                 return;
             }
 
-            m_objectronGraph.category = ObjectronGraph.Category.Cup;
+            m_objectronGraph.category = ObjectronGraph.Category.Chair;
             m_objectronGraph.maxNumObjects = 3;
             m_objectronGraph.minDetectionConfidence = m_minDetectionConfidence;
             m_objectronGraph.minTrackingConfidence = m_minTrackingConfidence;
@@ -278,7 +278,7 @@ namespace QuestObjectron
         {
             if (m_shutdownForSceneExit)
             {
-                QuestObjectronLogger.Boot("cup_detection_restart after early shutdown");
+                QuestObjectronLogger.Boot("chair_detection_restart after early shutdown");
                 m_shutdownForSceneExit = false;
             }
 
@@ -327,7 +327,7 @@ namespace QuestObjectron
                 ImageSourceProvider.ImageSource = null;
             }
 
-            QuestObjectronLogger.Boot("cup_detection_shutdown");
+            QuestObjectronLogger.Boot("chair_detection_shutdown");
         }
 
         private void OnDestroy()
@@ -437,7 +437,7 @@ namespace QuestObjectron
 
             m_objectronGraph.StartRun(m_imageSource);
             m_graphReady = true;
-            QuestObjectronLogger.Detect("graph_started model=Cup");
+            QuestObjectronLogger.Detect("graph_started model=Chair");
 
             var waitEndOfFrame = new WaitForEndOfFrame();
 
@@ -578,19 +578,19 @@ namespace QuestObjectron
             }
 
             var placementOutputs = m_worldPlacement.PlaceDetailed(lifted, cameraPose, null);
-            ProcessCupPlacements(lifted, placementOutputs);
+            ProcessChairPlacements(lifted, placementOutputs);
 
             ReportDetectionHud(lifted, cameraPose, count);
         }
 
         private void ProcessEmptyDetections()
         {
-            if (m_localizedCups.Count > 0)
+            if (m_localizedChairs.Count > 0)
             {
                 m_emptyLogCount++;
-                var primary = m_localizedCups[0];
+                var primary = m_localizedChairs[0];
                 PushHud(
-                    $"localized ({m_localizedCups.Count}/{MaxLocalizedCups})",
+                    $"localized ({m_localizedChairs.Count}/{MaxLocalizedChairs})",
                     primary.Corners?[0],
                     GetExtent(primary.Corners),
                     GetDistance(primary.Corners?[0]),
@@ -605,11 +605,11 @@ namespace QuestObjectron
             PushHud("scanning", null, 0f, -1f, -1, PlacementMethod.None);
             if (m_emptyLogCount == 1 || m_emptyLogCount % 45 == 0)
             {
-                QuestObjectronLogger.Detect("scanning — point at mug ~0.3-1m; Y (left)=reset scan");
+                QuestObjectronLogger.Detect("scanning — point at chair ~1-3m; Y (left)=reset scan");
             }
         }
 
-        private void ProcessCupPlacements(FrameAnnotation lifted, IReadOnlyList<PlacementOutput> placementOutputs)
+        private void ProcessChairPlacements(FrameAnnotation lifted, IReadOnlyList<PlacementOutput> placementOutputs)
         {
             var changed = false;
             foreach (var output in placementOutputs)
@@ -624,16 +624,16 @@ namespace QuestObjectron
                     continue;
                 }
 
-                if (!ObjectronCupSizeFit.TryScore(output.Corners, out var sizeScore, out var detectedSortedM))
+                if (!ObjectronChairSizeFit.TryScore(output.Corners, out var sizeScore, out var detectedSortedM))
                 {
                     continue;
                 }
 
                 var center = output.Corners[0];
-                var existingIndex = FindLocalizedCupIndex(center);
+                var existingIndex = FindLocalizedChairIndex(center);
                 if (existingIndex >= 0)
                 {
-                    if (TryRefineLocalizedCup(existingIndex, output, lifted, sizeScore, detectedSortedM))
+                    if (TryRefineLocalizedChair(existingIndex, output, lifted, sizeScore, detectedSortedM))
                     {
                         changed = true;
                     }
@@ -647,7 +647,7 @@ namespace QuestObjectron
                 }
 
                 var annotation = FindAnnotation(lifted, output.ObjectId);
-                m_localizedCups.Add(new ObjectronLocalizedCupState
+                m_localizedChairs.Add(new ObjectronLocalizedChairState
                 {
                     ObjectId = output.ObjectId,
                     Method = output.Method,
@@ -659,9 +659,9 @@ namespace QuestObjectron
                 });
                 changed = true;
                 QuestObjectronLogger.Detect(
-                    $"cup_localized id={output.ObjectId} method={output.Method} " +
-                    $"center={center:F2} edges={ObjectronCupSizeFit.FormatExtentsCm(detectedSortedM)} " +
-                    $"size_fit={sizeScore:F3} total={m_localizedCups.Count}");
+                    $"chair_localized id={output.ObjectId} method={output.Method} " +
+                    $"center={center:F2} edges={ObjectronChairSizeFit.FormatExtentsCm(detectedSortedM)} " +
+                    $"size_fit={sizeScore:F3} total={m_localizedChairs.Count}");
             }
 
             if (!changed)
@@ -669,57 +669,57 @@ namespace QuestObjectron
                 return;
             }
 
-            if (m_localizedCups.Count != m_lastLoggedLocalizedCount)
+            if (m_localizedChairs.Count != m_lastLoggedLocalizedCount)
             {
-                m_lastLoggedLocalizedCount = m_localizedCups.Count;
-                QuestObjectronLogger.Detect($"cup_localized_total={m_localizedCups.Count}");
+                m_lastLoggedLocalizedCount = m_localizedChairs.Count;
+                QuestObjectronLogger.Detect($"chair_localized_total={m_localizedChairs.Count}");
             }
 
             RefreshLocalizedVisuals();
         }
 
-        private bool TryRefineLocalizedCup(
+        private bool TryRefineLocalizedChair(
             int index,
             PlacementOutput output,
             FrameAnnotation lifted,
             float candidateScore,
             Vector3 candidateSortedM)
         {
-            var cup = m_localizedCups[index];
-            if (!ObjectronCupSizeFit.IsBetterFit(candidateScore, cup.SizeFitScore))
+            var chair = m_localizedChairs[index];
+            if (!ObjectronChairSizeFit.IsBetterFit(candidateScore, chair.SizeFitScore))
             {
                 return false;
             }
 
-            var previousScore = cup.SizeFitScore;
-            var previousExtents = cup.DetectedExtentsSortedM;
-            cup.ObjectId = output.ObjectId;
-            cup.Method = output.Method;
-            cup.Corners = (Vector3[])output.Corners.Clone();
-            cup.Annotation = FindAnnotation(lifted, output.ObjectId);
-            cup.DebugReport = output.DebugReport;
-            cup.SizeFitScore = candidateScore;
-            cup.DetectedExtentsSortedM = candidateSortedM;
+            var previousScore = chair.SizeFitScore;
+            var previousExtents = chair.DetectedExtentsSortedM;
+            chair.ObjectId = output.ObjectId;
+            chair.Method = output.Method;
+            chair.Corners = (Vector3[])output.Corners.Clone();
+            chair.Annotation = FindAnnotation(lifted, output.ObjectId);
+            chair.DebugReport = output.DebugReport;
+            chair.SizeFitScore = candidateScore;
+            chair.DetectedExtentsSortedM = candidateSortedM;
             QuestObjectronLogger.Detect(
-                $"cup_size_refined idx={index} id={output.ObjectId} " +
+                $"chair_size_refined idx={index} id={output.ObjectId} " +
                 $"fit {previousScore:F3}->{candidateScore:F3} " +
-                $"edges {ObjectronCupSizeFit.FormatExtentsCm(previousExtents)}->" +
-                $"{ObjectronCupSizeFit.FormatExtentsCm(candidateSortedM)} " +
-                $"ref={ObjectronCupSizeFit.FormatExtentsCm(ObjectronCupSizeFit.ReferenceExtentsM)}");
+                $"edges {ObjectronChairSizeFit.FormatExtentsCm(previousExtents)}->" +
+                $"{ObjectronChairSizeFit.FormatExtentsCm(candidateSortedM)} " +
+                $"ref={ObjectronChairSizeFit.FormatExtentsCm(ObjectronChairSizeFit.ReferenceExtentsM)}");
             return true;
         }
 
-        private int FindLocalizedCupIndex(Vector3 centerWorld)
+        private int FindLocalizedChairIndex(Vector3 centerWorld)
         {
-            for (var i = 0; i < m_localizedCups.Count; i++)
+            for (var i = 0; i < m_localizedChairs.Count; i++)
             {
-                var cup = m_localizedCups[i];
-                if (cup.Corners == null)
+                var chair = m_localizedChairs[i];
+                if (chair.Corners == null)
                 {
                     continue;
                 }
 
-                if (Vector3.Distance(centerWorld, cup.Corners[0]) < SameCupCenterRadiusM)
+                if (Vector3.Distance(centerWorld, chair.Corners[0]) < SameChairCenterRadiusM)
                 {
                     return i;
                 }
@@ -734,27 +734,27 @@ namespace QuestObjectron
             m_bboxDrawer?.SetDetections(null);
             m_questVisuals?.Localize(m_lastWorldBoxes);
 
-            if (m_lastWorldBoxes.Count > 0 && m_localizedCups.Count > 0)
+            if (m_lastWorldBoxes.Count > 0 && m_localizedChairs.Count > 0)
             {
-                var cup = m_localizedCups[m_localizedCups.Count - 1];
+                var chair = m_localizedChairs[m_localizedChairs.Count - 1];
                 m_lastPinSnapshot = new ObjectronPinSnapshot(
-                    cup.ObjectId,
-                    cup.Method,
+                    chair.ObjectId,
+                    chair.Method,
                     m_cameraAccess.GetCameraPose(),
                     m_lastWorldBoxes[m_lastWorldBoxes.Count - 1],
-                    cup.Annotation,
-                    cup.DebugReport);
+                    chair.Annotation,
+                    chair.DebugReport);
             }
         }
 
         private List<Vector3[]> BuildLocalizedWorldBoxes()
         {
-            var boxes = new List<Vector3[]>(m_localizedCups.Count);
-            foreach (var cup in m_localizedCups)
+            var boxes = new List<Vector3[]>(m_localizedChairs.Count);
+            foreach (var chair in m_localizedChairs)
             {
-                if (cup.Corners != null)
+                if (chair.Corners != null)
                 {
-                    boxes.Add(cup.Corners);
+                    boxes.Add(chair.Corners);
                 }
             }
 
@@ -763,8 +763,8 @@ namespace QuestObjectron
 
         private void ReportDetectionHud(FrameAnnotation lifted, Pose cameraPose, int frameCount)
         {
-            var primary = m_localizedCups.Count > 0
-                ? m_localizedCups[m_localizedCups.Count - 1]
+            var primary = m_localizedChairs.Count > 0
+                ? m_localizedChairs[m_localizedChairs.Count - 1]
                 : null;
             var ann = primary?.Annotation ?? lifted.Annotations[0];
             Vector3? camT = null;
@@ -780,13 +780,13 @@ namespace QuestObjectron
             var placementMethod = primary?.Method ?? PlacementMethod.None;
             var sizeFit = primary != null ? primary.SizeFitScore : float.NaN;
             var detail =
-                $"localized={m_localizedCups.Count}/{MaxLocalizedCups} scanning={Scanning} " +
+                $"localized={m_localizedChairs.Count}/{MaxLocalizedChairs} scanning={Scanning} " +
                 $"size_fit={(float.IsNaN(sizeFit) ? "—" : sizeFit.ToString("F3"))} " +
                 $"kp2d={CountKeypointsWith2D(ann)} kp3d={CountKeypointsWith3D(ann)}";
             m_detectionDebug?.Report(new DetectionDebugInfo(
                 camT.HasValue
-                    ? $"cup cam=({camT.Value.x:F2},{camT.Value.y:F2},{camT.Value.z:F2})m"
-                    : "cup detected",
+                    ? $"chair cam=({camT.Value.x:F2},{camT.Value.y:F2},{camT.Value.z:F2})m"
+                    : "chair detected",
                 detail,
                 worldCenter,
                 worldBoxes.Count > 0 ? worldBoxes[0] : null));
@@ -794,8 +794,8 @@ namespace QuestObjectron
             m_lastHudObjectId = primary?.ObjectId ?? ann.ObjectId;
             m_lastPlacementMethod = placementMethod.ToString();
             var state = Scanning
-                ? $"scanning ({m_localizedCups.Count}/{MaxLocalizedCups})"
-                : $"done ({m_localizedCups.Count})";
+                ? $"scanning ({m_localizedChairs.Count}/{MaxLocalizedChairs})"
+                : $"done ({m_localizedChairs.Count})";
             PushHud(state, worldCenter, GetExtent(worldBoxes.Count > 0 ? worldBoxes[0] : null),
                 GetDistance(worldCenter), m_lastHudObjectId, placementMethod);
         }
@@ -863,7 +863,7 @@ namespace QuestObjectron
                 pcaRes = $"{Mathf.RoundToInt(res.x)}x{Mathf.RoundToInt(res.y)}";
             }
 
-            var hint = BuildHudHint(m_localizedCups.Count, MaxLocalizedCups);
+            var hint = BuildHudHint(m_localizedChairs.Count, MaxLocalizedChairs);
             m_headsetHud.Apply(new ObjectronHudSnapshot(
                 detectState,
                 rotLabel,
@@ -881,19 +881,19 @@ namespace QuestObjectron
                 false));
         }
 
-        private static string BuildHudHint(int localizedCount, int maxCups)
+        private static string BuildHudHint(int localizedCount, int maxChairs)
         {
-            if (localizedCount >= maxCups)
+            if (localizedCount >= maxChairs)
             {
-                return $"all {maxCups} cups localized — refining size; Y=reset";
+                return $"all {maxChairs} chairs localized — refining size; Y=reset";
             }
 
             if (localizedCount > 0)
             {
-                return $"localized {localizedCount}/{maxCups} — refining size; Y=reset";
+                return $"localized {localizedCount}/{maxChairs} — refining size; Y=reset";
             }
 
-            return "scanning — point at each cup (11×10×8 cm); Y=reset";
+            return "scanning — point at each chair (~45×45×90 cm); Y=reset";
         }
 
         private static int CountKeypointsWith2D(ObjectAnnotation ann)

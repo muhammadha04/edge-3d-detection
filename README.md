@@ -1,6 +1,8 @@
-# Edge 3D Detection (Quest Objectron)
+﻿# Edge 3D Detection (Quest Objectron)
 
-Quest 3 mixed-reality app that runs **MediaPipe Objectron** on **Meta Passthrough Camera** frames and draws **world-space 3D bounding boxes** over real cups/mugs. The project focuses on stable environment-anchored placement (not head-locked overlays), head-tilt compensation, and repeatable scan sessions.
+Quest 3 mixed-reality app that runs **MediaPipe Objectron (Chair)** on **Meta Passthrough Camera** frames and draws **world-space 3D bounding boxes** over real chairs. The project focuses on stable environment-anchored placement (not head-locked overlays), head-tilt compensation, and repeatable scan sessions.
+
+> **Branch `chair`:** Cup detection is replaced with chair detection. Use `main` for the cup/mug build.
 
 ---
 
@@ -8,24 +10,24 @@ Quest 3 mixed-reality app that runs **MediaPipe Objectron** on **Meta Passthroug
 
 | Mode | Scene | Behavior |
 |------|-------|----------|
-| **ObjectronCupDetection** | `ObjectronCupDetection.unity` | Auto-scan up to 3 cups; each cup gets one environment-localized green wireframe box |
+| **ObjectronChairDetection** | `ObjectronChairDetection.unity` | Auto-scan up to 3 chairs; each chair gets one environment-localized green wireframe box |
 | **Box Debug (snapshot)** | `ObjectronBoxDebug.unity` | Continuous inference + manual Capture / Localize / Clear with labeled X/Y/Z edges |
 
 Both modes:
 - Use passthrough MR (see the real room)
 - Pair each camera frame with the PCA pose captured at submit time
 - Compensate headset roll when mapping model output to world space
-- Tear down fully when returning to the main menu (☰ Start)
+- Tear down fully when returning to the main menu (â˜° Start)
 
 ---
 
 ## Requirements
 
-- **Unity Hub** → Unity **6000.0.38f1** or newer (project tested on **6000.2.13f1**)
+- **Unity Hub** â†’ Unity **6000.0.38f1** or newer (project tested on **6000.2.13f1**)
 - **Meta Quest 3 / 3S**, Horizon OS **v74+**
 - Quest **Developer Mode** + USB debugging enabled
 - **Windows** PC for `install_mediapipe.ps1` (or extract the MediaPipe `.tgz` manually on macOS/Linux)
-- Physical headset — Passthrough Camera API does **not** work in XR Simulator
+- Physical headset â€” Passthrough Camera API does **not** work in XR Simulator
 
 ---
 
@@ -40,9 +42,9 @@ cd edge-3d-detection
 
 > The Unity project root is the repo root (`QuestObjectron3D` layout). Open this folder in Unity Hub.
 
-### 2. Install MediaPipe (required — not in git)
+### 2. Install MediaPipe (required â€” not in git)
 
-Native MediaPipe binaries and the Unity package exceed GitHub’s file size limits. After clone, run:
+Native MediaPipe binaries and the Unity package exceed GitHubâ€™s file size limits. After clone, run:
 
 ```powershell
 .\install_mediapipe.ps1
@@ -68,32 +70,32 @@ Move-Item Packages/package Packages/com.github.homuler.mediapipe
 | Asset | Source | Notes |
 |-------|--------|--------|
 | **Objectron Cup model** | Inside `com.github.homuler.mediapipe` | Cup category graph + weights; loaded at runtime by the scene **Bootstrap** from StreamingAssets (e.g. `objectron_cpu.txt` / GPU graph) |
-| **MediaPipe native libs** | Same package | `mediapipe_android.aar`, JNI — why step 2 is mandatory |
-| **Meta MRUK / Passthrough samples** | In repo under `Assets/PassthroughCameraApiSamples/` | Submodule of Meta’s PCA sample project |
+| **MediaPipe native libs** | Same package | `mediapipe_android.aar`, JNI â€” why step 2 is mandatory |
+| **Meta MRUK / Passthrough samples** | In repo under `Assets/PassthroughCameraApiSamples/` | Submodule of Metaâ€™s PCA sample project |
 | **Sentis YOLO model** | Meta sample (optional) | Disabled at runtime by `ObjectronDisableSentis`; Objectron does **not** use Sentis |
 
-You do **not** download a separate Objectron `.tflite` — it ships with the homuler package and is referenced by `ObjectronGraph` in the scene.
+You do **not** download a separate Objectron `.tflite` â€” it ships with the homuler package and is referenced by `ObjectronGraph` in the scene.
 
 ### 4. Open in Unity
 
-1. Unity Hub → **Add** → select the cloned folder.
+1. Unity Hub â†’ **Add** â†’ select the cloned folder.
 2. Use editor **6000.0.38f1+** (install **Android Build Support** + **OpenJDK** + **NDK**).
 3. First open may take several minutes (Library import).
 
 ### 5. Meta project setup
 
-1. **Meta → Tools → Project Setup Tool** → **Fix all** / **Apply all** (passthrough, OpenXR, etc.).
-2. Optional: **QuestObjectron → Configure Objectron Cup Detection Scene** if scene references look broken.
+1. **Meta â†’ Tools â†’ Project Setup Tool** â†’ **Fix all** / **Apply all** (passthrough, OpenXR, etc.).
+2. Optional: **QuestObjectron â†’ Configure Objectron Cup Detection Scene** if scene references look broken.
 
 ### 6. Build and run on Quest
 
-1. **File → Build Settings** → **Android** → **Switch Platform**.
-2. Connect Quest via USB → enable debugging on headset.
+1. **File â†’ Build Settings** â†’ **Android** â†’ **Switch Platform**.
+2. Connect Quest via USB â†’ enable debugging on headset.
 3. **Build And Run** (or Build APK, then `adb install`).
 4. On first launch, grant **camera** and **spatial** permissions.
-5. Main menu → **Quest Objectron / Tools**:
-   - **ObjectronCupDetection** — auto cup scan
-   - **Box Debug (snapshot)** — manual capture/localize
+5. Main menu â†’ **Quest Objectron / Tools**:
+   - **Chair Detection (auto scan)** â€” auto chair scan
+   - **Box Debug (snapshot)** â€” manual capture/localize
 
 ### 7. Logcat (optional)
 
@@ -103,41 +105,41 @@ adb logcat -s QuestObj3D Unity
 
 ### What is *not* in git
 
-- `Packages/com.github.homuler.mediapipe/` — run `install_mediapipe.ps1`
-- `Library/`, `Temp/`, `Logs/`, `UserSettings/` — Unity cache
-- `*.apk` — local builds
+- `Packages/com.github.homuler.mediapipe/` â€” run `install_mediapipe.ps1`
+- `Library/`, `Temp/`, `Logs/`, `UserSettings/` â€” Unity cache
+- `*.apk` â€” local builds
 
 ---
 
-## End-to-end pipeline (start → box in the room)
+## End-to-end pipeline (start â†’ box in the room)
 
 High-level flow shared by both scenes:
 
 ```
 Boot / permissions
-  → MediaPipe Bootstrap (GPU)
-  → PassthroughCameraAccess + PassthroughImageSource
-  → ObjectronGraph (Cup model, async)
-  → [per frame] capture pose + copy texture → inference
-  → FrameAnnotation (2D keypoints + 3D translation/rotation/scale)
-  → ObjectronWorldPlacement.PlaceDetailed()
-  → orientation constraints (roll / gravity / upright-on-table)
-  → world-space 9-point corner array
-  → wireframe visuals (QuestVisuals or LabeledBoxVisuals)
+  â†’ MediaPipe Bootstrap (GPU)
+  â†’ PassthroughCameraAccess + PassthroughImageSource
+  â†’ ObjectronGraph (Cup model, async)
+  â†’ [per frame] capture pose + copy texture â†’ inference
+  â†’ FrameAnnotation (2D keypoints + 3D translation/rotation/scale)
+  â†’ ObjectronWorldPlacement.PlaceDetailed()
+  â†’ orientation constraints (roll / gravity / upright-on-table)
+  â†’ world-space 9-point corner array
+  â†’ wireframe visuals (QuestVisuals or LabeledBoxVisuals)
 ```
 
 ### Step-by-step (one inference frame)
 
-1. **Capture** — `PassthroughCameraAccess.GetCameraPose()` is read and enqueued in `ObjectronFramePoseQueue` *before* the texture is submitted to MediaPipe. This fixes async drift (using the pose at callback time would make boxes follow the head).
+1. **Capture** â€” `PassthroughCameraAccess.GetCameraPose()` is read and enqueued in `ObjectronFramePoseQueue` *before* the texture is submitted to MediaPipe. This fixes async drift (using the pose at callback time would make boxes follow the head).
 
-2. **Inference** — Every 2nd frame (`InferenceEveryNFrames = 2`), the PCA image is copied into a `TextureFrame` and sent to Objectron (Cup). MediaPipe returns a `FrameAnnotation` with up to 3 `ObjectAnnotation` entries (translation, rotation 3×3, scale, keypoints, object id).
+2. **Inference** â€” Every 2nd frame (`InferenceEveryNFrames = 2`), the PCA image is copied into a `TextureFrame` and sent to Objectron (Cup). MediaPipe returns a `FrameAnnotation` with up to 3 `ObjectAnnotation` entries (translation, rotation 3Ã—3, scale, keypoints, object id).
 
-3. **Main-thread process** — The pending annotation is dequeued with the **paired** camera pose (`DequeueOrCurrent`). Processing is throttled to ≥ 0.2 s between runs (`DetectionProcessMinInterval`) to limit log/UI spam.
+3. **Main-thread process** â€” The pending annotation is dequeued with the **paired** camera pose (`DequeueOrCurrent`). Processing is throttled to â‰¥ 0.2 s between runs (`DetectionProcessMinInterval`) to limit log/UI spam.
 
-4. **Raw placement** — `ObjectronWorldPlacement.TryPlaceAnnotation()` picks the first working method:
-   - **Keypoint3D** — 3D keypoints transformed camera → world
-   - **Keypoint2DRaycast** — 2D keypoints → viewport ray → MRUK scene raycast (or 0.75 m fallback)
-   - **TranslationBox** — model translation + rotation matrix + half-extents → 8 corners
+4. **Raw placement** â€” `ObjectronWorldPlacement.TryPlaceAnnotation()` picks the first working method:
+   - **Keypoint3D** â€” 3D keypoints transformed camera â†’ world
+   - **Keypoint2DRaycast** â€” 2D keypoints â†’ viewport ray â†’ MRUK scene raycast (or 0.75 m fallback)
+   - **TranslationBox** â€” model translation + rotation matrix + half-extents â†’ 8 corners
 
    Camera-local points are converted with:
 
@@ -147,29 +149,29 @@ Boot / permissions
 
    where `placementPose = GetRollCompensatedPose(cameraPose)` when `CompensateHeadRoll` is on (head roll removed; pitch/yaw kept).
 
-5. **Depth refinement** (when 2D keypoints yield a viewport rect) — optional path in `PlaceOne()`:
+5. **Depth refinement** (when 2D keypoints yield a viewport rect) â€” optional path in `PlaceOne()`:
    - Raycast at mask center for distance
-   - **ModelOrientedMaskBox** — model rotation + depth-scaled extents
-   - **DepthRefinedBox** — scaled oriented box
-   - **TableSnappedBox** — optional MRUK table snap (`EnableTableSnap`)
-   - **MaskAlignedBox** — camera-aligned fallback (**disabled in cup mode** — it billboards toward the viewer)
+   - **ModelOrientedMaskBox** â€” model rotation + depth-scaled extents
+   - **DepthRefinedBox** â€” scaled oriented box
+   - **TableSnappedBox** â€” optional MRUK table snap (`EnableTableSnap`)
+   - **MaskAlignedBox** â€” camera-aligned fallback (**disabled in cup mode** â€” it billboards toward the viewer)
 
 6. **Post-placement constraints** (in `PlaceDetailed`, cup mode always on):
 
    | Step | Function | What it does |
    |------|----------|--------------|
-   | Roll / gravity | `TryAlignBoxToGravity` | Rotates box so the bottom face normal points **down** (−Y) |
+   | Roll / gravity | `TryAlignBoxToGravity` | Rotates box so the bottom face normal points **down** (âˆ’Y) |
    | Upright on table | `TryConstrainUprightOnTable` | Rebuilds box with world +Y vertical; **yaw** from the longer horizontal model edge; no camera billboard |
-   | Smoothing | `Smooth(objectId)` | Exponential blend (α = 0.35) per tracked object id |
+   | Smoothing | `Smooth(objectId)` | Exponential blend (Î± = 0.35) per tracked object id |
 
-7. **Corner layout** — 9 points: index `0` = center, `1–8` = corners. Edge lengths for metrics:
-   - X edge: `|corners[2] − corners[1]|`
-   - Y edge: `|corners[3] − corners[1]|`
-   - Z edge: `|corners[5] − corners[1]|`
+7. **Corner layout** â€” 9 points: index `0` = center, `1â€“8` = corners. Edge lengths for metrics:
+   - X edge: `|corners[2] âˆ’ corners[1]|`
+   - Y edge: `|corners[3] âˆ’ corners[1]|`
+   - Z edge: `|corners[5] âˆ’ corners[1]|`
 
-8. **Cup mode: localize or refine** — See [Cup detection rules](#objectroncupdetection-rules) below.
+8. **Cup mode: localize or refine** â€” See [Cup detection rules](#objectroncupdetection-rules) below.
 
-9. **Visualize** — `ObjectronQuestVisuals.Localize()` draws 12 world-space `LineRenderer` edges parented under `ObjectronVisualsRoot` (world-locked, not parented to the camera).
+9. **Visualize** â€” `ObjectronQuestVisuals.Localize()` draws 12 world-space `LineRenderer` edges parented under `ObjectronVisualsRoot` (world-locked, not parented to the camera).
 
 ### Head-tilt math (roll compensation)
 
@@ -183,47 +185,43 @@ MediaPipe outputs pose in the **tilted camera image frame**. When the user tilts
 
 Assumes the mug sits on a **flat horizontal surface** (only yaw varies):
 
-1. Find which box axis is most aligned with world up → vertical half-extent.
-2. Of the two horizontal axes, use the **longer** one for yaw (handle + cylinder ≈ 11 cm axis).
-3. Project that axis onto the XZ plane → `flatYaw`.
+1. Find which box axis is most aligned with world up â†’ vertical half-extent.
+2. Of the two horizontal axes, use the **longer** one for yaw (handle + cylinder â‰ˆ 11 cm axis).
+3. Project that axis onto the XZ plane â†’ `flatYaw`.
 4. `worldRot = LookRotation(flatYaw, Vector3.up)`.
-5. Rebuild corners: `corner[i] = center + worldRot * (unitCorner[i] ⊙ halfExtents)`.
+5. Rebuild corners: `corner[i] = center + worldRot * (unitCorner[i] âŠ™ halfExtents)`.
 
 ---
 
-## ObjectronCupDetection rules
+## ObjectronChairDetection rules
 
 ### Scan behavior
 
-1. Scene starts **scanning** — inference runs continuously.
-2. **New cup** — center not within **15 cm** of any already-localized cup → box is **frozen** in world space immediately.
-3. **Same cup** — center within 15 cm → no second box; optional **size refinement** only (see below).
-4. Stops adding new cups at **3** (`MaxLocalizedCups` = MediaPipe `maxNumObjects`).
-5. **No 2D overlay** — `ObjectronPassthroughOverlay` disabled; no screen-space boxes.
+1. Scene starts **scanning** â€” inference runs continuously.
+2. **New chair** â€” center not within **50 cm** of any already-localized chair â†’ box is **frozen** in world space immediately.
+3. **Same chair** â€” center within 50 cm â†’ no second box; optional **size refinement** only (see below).
+4. Stops adding new chairs at **3** (`MaxLocalizedChairs` = MediaPipe `maxNumObjects`).
+5. **No 2D overlay** â€” `ObjectronPassthroughOverlay` disabled; no screen-space boxes.
 
-### Size refinement (`ObjectronCupSizeFit`)
+### Size refinement (`ObjectronChairSizeFit`)
 
-Reference mug extents (handle on left): **11 × 10 × 8 cm** (X × Y × Z).
+Reference chair extents (typical dining chair): **~45 Ã— 45 Ã— 90 cm** (sorted at runtime).
 
 For each detection, edge lengths are sorted (rotation-invariant) and scored:
 
 ```
-score = Σ_axis ((detected_a − ref_a) / ref_a)²
+score = Î£_axis ((detected_a âˆ’ ref_a) / ref_a)Â²
 ```
 
-Lower is better. An existing localized cup is **updated** only if the new score improves by at least **5%** (`IsBetterFit`, `minRelativeImprovement = 0.05`). Position/orientation update together with the new corner array.
+Lower is better. An existing localized chair is **updated** only if the new score improves by at least **5%** (`IsBetterFit`, `minRelativeImprovement = 0.05`). Position/orientation update together with the new corner array.
 
-### Cup mode placement flags (forced in code)
+### Chair mode placement flags
 
-Set in `ObjectronCupDetectionManager.Awake()`:
+Set in `ObjectronChairDetectionManager.Awake()`:
 
 | Option | Value | Reason |
 |--------|-------|--------|
 | `CompensateHeadRoll` | `true` | Level camera pose for world mapping |
-| `ConstrainUprightOnTable` | `true` | Horizontal bottom, yaw-only rotation |
-| `DisableMaskAlignedFallback` | `true` | Never use camera-facing mask box |
-| `UseMaskWhenBadOrientation` | `false` | Don’t swap to mask on bad orientation |
-| `EnableTableSnap` | `true` | MRUK raycast snap when available |
 | `MirrorInferenceHorizontal` | from `PassthroughImageSource.isHorizontallyFlipped` | Align with PCA flip |
 
 ### MediaPipe tuning (inspector / scene)
@@ -235,8 +233,8 @@ Set in `ObjectronCupDetectionManager.Awake()`:
 | `m_runningMode` | `Async` | Non-blocking inference |
 | `InferenceEveryNFrames` | `2` | Run model every 2nd frame |
 | `DetectionProcessMinInterval` | `0.2` s | Min time between main-thread processes |
-| `SameCupCenterRadiusM` | `0.15` m | Duplicate cup dedup radius |
-| `MaxLocalizedCups` | `3` | Max simultaneous localized mugs |
+| `SameChairCenterRadiusM` | `0.5` m | Duplicate chair dedup radius |
+| `MaxLocalizedChairs` | `3` | Max simultaneous localized chairs |
 
 ---
 
@@ -244,11 +242,11 @@ Set in `ObjectronCupDetectionManager.Awake()`:
 
 Continuous inference latches the latest valid placement into memory. User workflow:
 
-1. Point at mug — live inference updates internal latch (`LatchDetection`).
-2. **Capture & Detect** (UI) or **B** — show labeled wireframe from latched corners.
-3. **Localize Box** — pin in world space.
-4. **Clear** or **A** — remove box.
-5. **☰ Start** — return to menu (full cleanup).
+1. Point at mug â€” live inference updates internal latch (`LatchDetection`).
+2. **Capture & Detect** (UI) or **B** â€” show labeled wireframe from latched corners.
+3. **Localize Box** â€” pin in world space.
+4. **Clear** or **A** â€” remove box.
+5. **â˜° Start** â€” return to menu (full cleanup).
 
 Box Debug uses the same placement pipeline but does **not** force cup-mode restrictions (mask fallback remains available in options). It uses `ObjectronLabeledBoxVisuals` for axis labels.
 
@@ -256,11 +254,11 @@ Box Debug uses the same placement pipeline but does **not** force cup-mode restr
 
 ## Session lifecycle (main menu restart)
 
-Both **ObjectronCupDetection** and **Box Debug** reset to zero when leaving or re-entering:
+Both **ObjectronChairDetection** and **Box Debug** reset to zero when leaving or re-entering:
 
 | When | What runs |
 |------|-----------|
-| **☰ Start** (in scene) | `ObjectronSessionCleanup.LeaveObjectronScene()` → stop graph, clear cups/boxes, destroy `DontDestroyOnLoad` visual roots |
+| **â˜° Start** (in scene) | `ObjectronSessionCleanup.LeaveObjectronScene()` â†’ stop graph, clear cups/boxes, destroy `DontDestroyOnLoad` visual roots |
 | **Menu button** (enter scene) | `BeginFreshSession()` before `LoadScene` |
 | **Scene Awake** | `BeginFreshSession()` + manager `ShutdownForSceneExit` flag cleared |
 
@@ -272,28 +270,28 @@ Both **ObjectronCupDetection** and **Box Debug** reset to zero when leaving or r
 
 ```
 Passthrough MR
-  └─ PassthroughCameraAccess (pose + ViewportPointToRay)
-       └─ PassthroughImageSource → TextureFramePool
-            └─ ObjectronGraph (Cup, async)
-                 └─ FrameAnnotation
-                      └─ ObjectronWorldPlacement
-                           ├─ camera-local pose (MediaPipe frame fixes)
-                           ├─ optional depth / MRUK refinement
-                           ├─ TryAlignBoxToGravity
-                           └─ TryConstrainUprightOnTable (cup mode)
-                                └─ ObjectronQuestVisuals / ObjectronLabeledBoxVisuals
+  â””â”€ PassthroughCameraAccess (pose + ViewportPointToRay)
+       â””â”€ PassthroughImageSource â†’ TextureFramePool
+            â””â”€ ObjectronGraph (Cup, async)
+                 â””â”€ FrameAnnotation
+                      â””â”€ ObjectronWorldPlacement
+                           â”œâ”€ camera-local pose (MediaPipe frame fixes)
+                           â”œâ”€ optional depth / MRUK refinement
+                           â”œâ”€ TryAlignBoxToGravity
+                           â””â”€ TryConstrainUprightOnTable (cup mode)
+                                â””â”€ ObjectronQuestVisuals / ObjectronLabeledBoxVisuals
 ```
 
 ---
 
 ## Quest controls
 
-### ObjectronCupDetection
+### ObjectronChairDetection
 
 | Input | Action |
 |-------|--------|
-| **A** (right) | Reset scan — clear all localized cups |
-| **☰ Start** | Main menu + full session cleanup |
+| **Y** (left) | Reset scan â€” clear all localized chairs |
+| **â˜° Start** | Main menu + full session cleanup |
 
 ### Box Debug
 
@@ -302,7 +300,7 @@ Passthrough MR
 | **Capture & Detect** (UI) or **B** | Show latched labeled box |
 | **Localize Box** | Pin box in room space |
 | **Clear Box** or **A** | Remove box |
-| **☰ Start** | Main menu + full session cleanup |
+| **â˜° Start** | Main menu + full session cleanup |
 
 ---
 
@@ -315,12 +313,12 @@ adb logcat -s QuestObj3D Unity
 | Tag | Meaning |
 |-----|---------|
 | `BOOT` | Bootstrap, session cleanup, placement options |
-| `DETECT` | Inference, `cup_localized`, `cup_size_refined`, `cup_scan_reset` |
+| `DETECT` | Inference, `chair_localized`, `chair_size_refined`, `chair_scan_reset` |
 | `WORLD` | Placement method per object id |
 | `VIZ` | Wireframe counts |
 | `ERR` | Errors |
 
-Useful strings: `cup_localized`, `cup_size_refined`, `cup_scan_reset`, `objectron_session_cleanup`, `cup_detection_shutdown`, `box_debug_shutdown`.
+Useful strings: `chair_localized`, `chair_size_refined`, `chair_scan_reset`, `objectron_session_cleanup`, `chair_detection_shutdown`, `box_debug_shutdown`.
 
 ---
 
@@ -328,12 +326,12 @@ Useful strings: `cup_localized`, `cup_size_refined`, `cup_scan_reset`, `objectro
 
 | Script | Role |
 |--------|------|
-| `ObjectronCupDetectionManager.cs` | Cup scan, localize, size refinement, session shutdown |
+| `ObjectronChairDetectionManager.cs` | Chair scan, localize, size refinement, session shutdown |
 | `ObjectronBoxDebugManager.cs` | Box Debug latch + capture/localize |
-| `ObjectronWorldPlacement.cs` | Camera → world corners, depth refinement |
+| `ObjectronWorldPlacement.cs` | Camera â†’ world corners, depth refinement |
 | `ObjectronWorldOrientation.cs` | Roll compensation, gravity align, upright-on-table |
 | `ObjectronFramePoseQueue.cs` | Frame/pose pairing for async inference |
-| `ObjectronCupSizeFit.cs` | Reference mug size scoring |
+| `ObjectronChairSizeFit.cs` | Reference chair size scoring |
 | `ObjectronSessionCleanup.cs` | Menu exit / fresh session |
 | `ObjectronQuestVisuals.cs` | Green wireframes (cup mode) |
 | `ObjectronLabeledBoxVisuals.cs` | Labeled wireframe (Box Debug) |
@@ -352,7 +350,7 @@ Useful strings: `cup_localized`, `cup_size_refined`, `cup_scan_reset`, `objectro
 
 | Symptom | Check |
 |---------|--------|
-| No detections | Cup ~0.5–1.5 m, good lighting; logcat `DETECT empty` |
+| No detections | Cup ~0.5â€“1.5 m, good lighting; logcat `DETECT empty` |
 | Box tilted with head | `CompensateHeadRoll` + `ConstrainUprightOnTable` enabled (cup mode defaults) |
 | Box faces you when walking around | Rebuild with cup mode (mask aligned disabled); boxes must be localized, not live-tracked |
 | Box offset in depth | Grant spatial permission for MRUK raycast |

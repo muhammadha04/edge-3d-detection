@@ -11,10 +11,10 @@ using UnityEngine.SceneManagement;
 
 namespace QuestObjectron.Editor
 {
-    public static class ObjectronCupDetectionSetup
+    public static class ObjectronChairDetectionSetup
     {
-        private const string ScenePath = "Assets/ObjectronDetection/Scenes/ObjectronCupDetection.unity";
-        private const string ConfigurePrefKey = "QuestObjectron_ObjectronCupSceneConfigured_v4";
+        private const string ScenePath = "Assets/ObjectronDetection/Scenes/ObjectronChairDetection.unity";
+        private const string ConfigurePrefKey = "QuestObjectron_ObjectronChairSceneConfigured_v1";
         private const string InBoxMaterialPath =
             "Assets/ObjectronDetection/EnvironmentDepth/Materials/EnvironmentDepthInBox.mat";
         private const string InBoxShaderPath =
@@ -49,21 +49,21 @@ namespace QuestObjectron.Editor
             };
         }
 
-        [MenuItem("QuestObjectron/Configure Objectron Cup Detection Scene")]
+        [MenuItem("QuestObjectron/Configure Objectron Chair Detection Scene")]
         public static void ConfigureExistingSceneMenu()
         {
             ConfigureExistingScene(silent: false);
             EditorPrefs.SetBool(ConfigurePrefKey, true);
         }
 
-        /// <summary>Unity batchmode: -executeMethod QuestObjectron.Editor.ObjectronCupDetectionSetup.ConfigureExistingSceneBatch</summary>
+        /// <summary>Unity batchmode: -executeMethod QuestObjectron.Editor.ObjectronChairDetectionSetup.ConfigureExistingSceneBatch</summary>
         public static void ConfigureExistingSceneBatch()
         {
             ConfigureExistingScene(silent: false);
             EditorPrefs.SetBool(ConfigurePrefKey, true);
         }
 
-        [MenuItem("QuestObjectron/Create Objectron Cup Detection Scene (Empty)")]
+        [MenuItem("QuestObjectron/Create Objectron Chair Detection Scene (Empty)")]
         public static void CreateEmptyScene()
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -129,7 +129,7 @@ namespace QuestObjectron.Editor
 
             if (!silent)
             {
-                Debug.Log("QuestObjectron: ObjectronCupDetection scene configured. Open the scene and build to Quest 3.");
+                Debug.Log("QuestObjectron: ObjectronChairDetection scene configured. Open the scene and build to Quest 3.");
             }
         }
 
@@ -162,7 +162,7 @@ namespace QuestObjectron.Editor
             detectionRoot.AddComponent<ObjectronDisableSentis>();
             detectionRoot.AddComponent<ObjectronSceneReferences>();
 
-            var manager = detectionRoot.AddComponent<ObjectronCupDetectionManager>();
+            var manager = detectionRoot.AddComponent<ObjectronChairDetectionManager>();
             var imageSource = detectionRoot.AddComponent<PassthroughImageSource>();
             var graph = detectionRoot.AddComponent<ObjectronGraph>();
             var pool = detectionRoot.AddComponent<TextureFramePool>();
@@ -201,8 +201,8 @@ namespace QuestObjectron.Editor
                 detectionRoot.AddComponent<ObjectronSceneReferences>();
             }
 
-            var manager = detectionRoot.GetComponent<ObjectronCupDetectionManager>()
-                ?? detectionRoot.AddComponent<ObjectronCupDetectionManager>();
+            var manager = detectionRoot.GetComponent<ObjectronChairDetectionManager>()
+                ?? detectionRoot.AddComponent<ObjectronChairDetectionManager>();
             var imageSource = detectionRoot.GetComponent<PassthroughImageSource>()
                 ?? detectionRoot.AddComponent<PassthroughImageSource>();
             var graph = detectionRoot.GetComponent<ObjectronGraph>()
@@ -321,7 +321,7 @@ namespace QuestObjectron.Editor
             SetObjectReference(so, "_gpuConfig", gpuConfig);
             SetObjectReference(so, "_openGlEsConfig", glesConfig);
 
-            SetEnum(so, "category", (int)ObjectronGraph.Category.Cup);
+            SetEnum(so, "category", (int)ObjectronGraph.Category.Chair);
             SetInt(so, "maxNumObjects", 3);
             // Serialized backing fields (not the public property names).
             SetFloat(so, "_minDetectionConfidence", 0.35f);
@@ -385,7 +385,7 @@ namespace QuestObjectron.Editor
         }
 
         private static void WireManager(
-            ObjectronCupDetectionManager manager,
+            ObjectronChairDetectionManager manager,
             PassthroughCameraAccess cameraAccess,
             PassthroughImageSource imageSource,
             ObjectronGraph graph,

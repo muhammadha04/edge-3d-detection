@@ -11,13 +11,13 @@ namespace QuestObjectron
     [DefaultExecutionOrder(-50)]
     public class ObjectronSceneReferences : MonoBehaviour
     {
-        [SerializeField] private ObjectronCupDetectionManager m_manager;
+        [SerializeField] private ObjectronChairDetectionManager m_manager;
 
         private void Awake()
         {
             if (m_manager == null)
             {
-                m_manager = GetComponent<ObjectronCupDetectionManager>();
+                m_manager = GetComponent<ObjectronChairDetectionManager>();
             }
 
             if (m_manager == null)

@@ -1,13 +1,13 @@
-// Compares Objectron box edge lengths to known physical cup dimensions.
+// Compares Objectron box edge lengths to typical chair dimensions.
 
 using UnityEngine;
 
 namespace QuestObjectron
 {
-    public static class ObjectronCupSizeFit
+    public static class ObjectronChairSizeFit
     {
-        /// <summary>Full extents in meters: X=11cm (handle+cylinder), Y=10cm, Z=8cm (handle on left).</summary>
-        public static readonly Vector3 ReferenceExtentsM = new(0.11f, 0.10f, 0.08f);
+        /// <summary>Full extents in meters: ~45cm seat width, ~90cm height, ~45cm depth (sorted at runtime).</summary>
+        public static readonly Vector3 ReferenceExtentsM = new(0.45f, 0.90f, 0.45f);
 
         /// <summary>
         /// Lower is better. Rotation-invariant: sorts both detected and reference edge lengths

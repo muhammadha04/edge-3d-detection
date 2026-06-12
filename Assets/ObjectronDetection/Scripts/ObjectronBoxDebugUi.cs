@@ -85,10 +85,10 @@ namespace QuestObjectron
             {
                 BoxDebugState.Booting => "Booting...",
                 BoxDebugState.Ready => m_manager.LiveDetectionCount > 0
-                    ? $"Cup latched ({m_manager.LiveDetectionCount}) — Capture & Detect or B"
-                    : "Point at mug — wait for live detect, then Capture & Detect or B",
+                    ? $"Chair latched ({m_manager.LiveDetectionCount}) — Capture & Detect or B"
+                    : "Point at chair — wait for live detect, then Capture & Detect or B",
                 BoxDebugState.Detected => "Box shown — compare, then Localize",
-                BoxDebugState.NoDetection => "No cup latched yet — point at mug and retry",
+                BoxDebugState.NoDetection => "No chair latched yet — point at chair and retry",
                 BoxDebugState.Localized => "Box pinned — A or Clear to remove",
                 _ => "Ready",
             };

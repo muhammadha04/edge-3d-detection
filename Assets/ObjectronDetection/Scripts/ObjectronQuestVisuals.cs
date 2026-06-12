@@ -1,4 +1,4 @@
-// World-space 3D cup box: 12 green edge lines only.
+// World-space 3D object box: 12 green edge lines only.
 
 using System.Collections.Generic;
 using UnityEngine;

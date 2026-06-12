@@ -1,4 +1,4 @@
-// Ensures MediaPipe Bootstrap runs before Objectron cup detection.
+// Ensures MediaPipe Bootstrap runs before Objectron chair detection.
 
 using Mediapipe.Unity;
 using UnityEngine;

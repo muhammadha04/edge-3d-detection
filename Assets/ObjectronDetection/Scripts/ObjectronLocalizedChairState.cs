@@ -1,11 +1,11 @@
-// Runtime-only cup track state (not Unity-serialized).
+// Runtime-only chair track state (not Unity-serialized).
 
 using Mediapipe;
 using UnityEngine;
 
 namespace QuestObjectron
 {
-    internal sealed class ObjectronLocalizedCupState
+    internal sealed class ObjectronLocalizedChairState
     {
         public int ObjectId;
         public PlacementMethod Method;

@@ -65,6 +65,10 @@ namespace PassthroughCameraSamples.StartScene
                     {
                         label = "Environment Depth (live)";
                     }
+                    else if (label.Contains("ObjectronChairDetection"))
+                    {
+                        label = "Chair Detection (auto scan)";
+                    }
                     else if (label.Contains("ObjectronBoxDebug"))
                     {
                         label = "Box Debug (snapshot)";
