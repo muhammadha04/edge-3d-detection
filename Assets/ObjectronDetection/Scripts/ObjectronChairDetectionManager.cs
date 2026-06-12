@@ -18,8 +18,6 @@ namespace QuestObjectron
         private const int InferenceEveryNFrames = 2;
         /// <summary>Min interval between main-thread detection process + ok logs (stops objectId 1–21 spam).</summary>
         private const float DetectionProcessMinInterval = 0.2f;
-        /// <summary>Two chair centers closer than this are treated as the same chair.</summary>
-        private const float SameChairCenterRadiusM = 0.5f;
         private int MaxLocalizedChairs => ObjectronLaunchSettings.ClampMaxObjects(ObjectronLaunchSettings.MaxObjects);
 
         [Header("Meta / MediaPipe")]
@@ -623,6 +621,7 @@ namespace QuestObjectron
         private void ProcessChairPlacements(FrameAnnotation lifted, IReadOnlyList<PlacementOutput> placementOutputs)
         {
             var changed = false;
+            var acceptedThisFrame = new List<PlacementOutput>();
             foreach (var output in placementOutputs)
             {
                 if (output.Corners == null || output.Method == PlacementMethod.None)
@@ -635,13 +634,21 @@ namespace QuestObjectron
                     continue;
                 }
 
+                if (IsDuplicatePlacement(output, acceptedThisFrame))
+                {
+                    QuestObjectronLogger.Detect(
+                        $"chair_duplicate_skipped id={output.ObjectId} center={output.Corners[0]:F2}");
+                    continue;
+                }
+
                 if (!ObjectronChairSizeFit.TryScore(output.Corners, out var sizeScore, out var detectedSortedM))
                 {
                     continue;
                 }
 
                 var center = output.Corners[0];
-                var existingIndex = FindLocalizedChairIndex(center);
+                var existingIndex = ObjectronChairDedup.FindDuplicateIndex(
+                    m_localizedChairs, output.ObjectId, output.Corners);
                 if (existingIndex >= 0)
                 {
                     if (TryRefineLocalizedChair(existingIndex, output, lifted, sizeScore, detectedSortedM))
@@ -649,6 +656,7 @@ namespace QuestObjectron
                         changed = true;
                     }
 
+                    acceptedThisFrame.Add(output);
                     continue;
                 }
 
@@ -673,6 +681,7 @@ namespace QuestObjectron
                     $"chair_localized id={output.ObjectId} method={output.Method} " +
                     $"center={center:F2} edges={ObjectronChairSizeFit.FormatExtentsCm(detectedSortedM)} " +
                     $"size_fit={sizeScore:F3} total={m_localizedChairs.Count}");
+                acceptedThisFrame.Add(output);
             }
 
             if (!changed)
@@ -720,23 +729,23 @@ namespace QuestObjectron
             return true;
         }
 
-        private int FindLocalizedChairIndex(Vector3 centerWorld)
+        private static bool IsDuplicatePlacement(
+            PlacementOutput candidate,
+            IReadOnlyList<PlacementOutput> acceptedThisFrame)
         {
-            for (var i = 0; i < m_localizedChairs.Count; i++)
+            foreach (var existing in acceptedThisFrame)
             {
-                var chair = m_localizedChairs[i];
-                if (chair.Corners == null)
+                if (ObjectronChairDedup.AreSameChair(
+                        candidate.ObjectId,
+                        candidate.Corners,
+                        existing.ObjectId,
+                        existing.Corners))
                 {
-                    continue;
-                }
-
-                if (Vector3.Distance(centerWorld, chair.Corners[0]) < SameChairCenterRadiusM)
-                {
-                    return i;
+                    return true;
                 }
             }
 
-            return -1;
+            return false;
         }
 
         private void RefreshLocalizedVisuals()
