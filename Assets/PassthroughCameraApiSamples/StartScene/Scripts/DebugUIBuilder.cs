@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 // Original Source code from Oculus Starter Samples (https://github.com/oculus-samples/Unity-StarterSamples)
 
+using System;
 using System.Collections.Generic;
 using Meta.XR.Samples;
 using TMPro;
@@ -339,6 +340,32 @@ namespace PassthroughCameraSamples.StartScene
             s.wholeNumbers = wholeNumbersOnly;
             AddRect(rt, targetCanvas);
             return rt;
+        }
+
+        /// <summary>Title label (updates with value) plus slider.</summary>
+        public RectTransform AddValueSlider(
+            string title,
+            float min,
+            float max,
+            float initialValue,
+            bool wholeNumbersOnly,
+            Action<float> onValueChanged,
+            Func<float, string> formatValue,
+            int targetCanvas = 0)
+        {
+            formatValue ??= v => v.ToString("F2");
+            var valueLabelRt = AddLabel($"{title}: {formatValue(initialValue)}", targetCanvas);
+            var valueText = valueLabelRt.GetComponent<Text>();
+            var sliderRt = AddSlider(string.Empty, min, max, value =>
+            {
+                valueText.text = $"{title}: {formatValue(value)}";
+                onValueChanged?.Invoke(value);
+            }, wholeNumbersOnly, targetCanvas);
+            var slider = sliderRt.GetComponentInChildren<Slider>();
+            slider.SetValueWithoutNotify(initialValue);
+            valueText.text = $"{title}: {formatValue(initialValue)}";
+            onValueChanged?.Invoke(initialValue);
+            return sliderRt;
         }
 
         public RectTransform AddDivider(int targetCanvas = 0)

@@ -58,6 +58,7 @@ namespace PassthroughCameraSamples.StartScene
             if (questToolScenes.Count > 0)
             {
                 _ = uiBuilder.AddLabel("Quest Objectron / Tools", DebugUIBuilder.DEBUG_PANE_LEFT);
+                AddObjectronDetectionSliders(uiBuilder);
                 foreach (var scene in questToolScenes)
                 {
                     var label = Path.GetFileNameWithoutExtension(scene.Item2);
@@ -125,5 +126,39 @@ namespace PassthroughCameraSamples.StartScene
 
         private static bool IsObjectronToolScene(string scenePath) =>
             scenePath.Contains("ObjectronDetection") || scenePath.Contains("EnvironmentDepth");
+
+        private static void AddObjectronDetectionSliders(DebugUIBuilder uiBuilder)
+        {
+            uiBuilder.AddValueSlider(
+                "Max objects",
+                ObjectronLaunchSettings.MinMaxObjects,
+                ObjectronLaunchSettings.MaxMaxObjects,
+                ObjectronLaunchSettings.MaxObjects,
+                wholeNumbersOnly: true,
+                onValueChanged: value => ObjectronLaunchSettings.MaxObjects =
+                    ObjectronLaunchSettings.ClampMaxObjects(Mathf.RoundToInt(value)),
+                formatValue: value => Mathf.RoundToInt(value).ToString(),
+                targetCanvas: DebugUIBuilder.DEBUG_PANE_LEFT);
+
+            uiBuilder.AddValueSlider(
+                "Detection confidence",
+                0.05f,
+                0.95f,
+                ObjectronLaunchSettings.MinDetectionConfidence,
+                wholeNumbersOnly: false,
+                onValueChanged: value => ObjectronLaunchSettings.MinDetectionConfidence = value,
+                formatValue: value => value.ToString("F2"),
+                targetCanvas: DebugUIBuilder.DEBUG_PANE_LEFT);
+
+            uiBuilder.AddValueSlider(
+                "Tracking threshold",
+                0.05f,
+                0.95f,
+                ObjectronLaunchSettings.MinTrackingConfidence,
+                wholeNumbersOnly: false,
+                onValueChanged: value => ObjectronLaunchSettings.MinTrackingConfidence = value,
+                formatValue: value => value.ToString("F2"),
+                targetCanvas: DebugUIBuilder.DEBUG_PANE_LEFT);
+        }
     }
 }

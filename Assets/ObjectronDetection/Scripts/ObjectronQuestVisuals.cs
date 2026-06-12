@@ -8,7 +8,7 @@ namespace QuestObjectron
 {
     public class ObjectronQuestVisuals : MonoBehaviour
     {
-        private const int MaxBoxes = 3;
+        private const int MaxBoxesPool = 20;
         private const int DefaultLayer = 0;
         private const int VisualsVersion = 5;
         private const int TableCornerDots = 4;
@@ -45,7 +45,7 @@ namespace QuestObjectron
 
             m_pool.Clear();
             m_prewarmed = false;
-            for (var i = 0; i < MaxBoxes; i++)
+            for (var i = 0; i < MaxBoxesPool; i++)
             {
                 var visual = GetOrCreate(i);
                 visual.Root.SetActive(false);
@@ -161,8 +161,9 @@ namespace QuestObjectron
                 Prewarm();
             }
 
+            var maxBoxes = ObjectronLaunchSettings.ClampMaxObjects(ObjectronLaunchSettings.MaxObjects);
             var shown = 0;
-            for (var i = 0; i < worldBoxes.Count && i < MaxBoxes; i++)
+            for (var i = 0; i < worldBoxes.Count && i < maxBoxes; i++)
             {
                 var corners = worldBoxes[i];
                 if (corners == null || corners.Length < 9)

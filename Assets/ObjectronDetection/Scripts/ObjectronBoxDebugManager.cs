@@ -123,8 +123,15 @@ namespace QuestObjectron
                 m_bootstrap = FindAnyObjectByType<Bootstrap>();
             }
 
+            ApplyLaunchSettings();
             ApplyGraphTuning();
             m_visuals.Prewarm();
+        }
+
+        private void ApplyLaunchSettings()
+        {
+            m_minDetectionConfidence = ObjectronLaunchSettings.MinDetectionConfidence;
+            m_minTrackingConfidence = ObjectronLaunchSettings.MinTrackingConfidence;
         }
 
         private IEnumerator Start()
@@ -549,9 +556,7 @@ namespace QuestObjectron
             }
 
             m_objectronGraph.category = ObjectronGraph.Category.Chair;
-            m_objectronGraph.maxNumObjects = 3;
-            m_objectronGraph.minDetectionConfidence = m_minDetectionConfidence;
-            m_objectronGraph.minTrackingConfidence = m_minTrackingConfidence;
+            ObjectronLaunchSettings.ApplyToGraph(m_objectronGraph);
         }
     }
 }

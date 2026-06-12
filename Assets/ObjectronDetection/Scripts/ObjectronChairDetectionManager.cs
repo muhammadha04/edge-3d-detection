@@ -20,7 +20,7 @@ namespace QuestObjectron
         private const float DetectionProcessMinInterval = 0.2f;
         /// <summary>Two chair centers closer than this are treated as the same chair.</summary>
         private const float SameChairCenterRadiusM = 0.5f;
-        private const int MaxLocalizedChairs = 3;
+        private int MaxLocalizedChairs => ObjectronLaunchSettings.ClampMaxObjects(ObjectronLaunchSettings.MaxObjects);
 
         [Header("Meta / MediaPipe")]
         [SerializeField] private PassthroughCameraAccess m_cameraAccess;
@@ -189,7 +189,7 @@ namespace QuestObjectron
         public void ResetDetection()
         {
             ClearLocalizedStateSilent();
-            QuestObjectronLogger.Detect("chair_scan_reset — point at chairs to localize (max 3)");
+            QuestObjectronLogger.Detect($"chair_scan_reset — point at chairs to localize (max {MaxLocalizedChairs})");
         }
 
         private void MaybeLogRotationHint()
@@ -245,8 +245,12 @@ namespace QuestObjectron
             QuestObjectronLogger.Boot(
                 $"camera_rotation={m_imageSource.rotation} flip={m_imageSource.isHorizontallyFlipped} (PassthroughImageSource — change if [DETECT] empty)");
 
+            ApplyLaunchSettings();
             ApplyGraphTuning();
             EnsureDebug();
+            QuestObjectronLogger.Boot(
+                $"launch_settings max_objects={MaxLocalizedChairs} " +
+                $"detect_conf={m_minDetectionConfidence:F2} track_conf={m_minTrackingConfidence:F2}");
             QuestObjectronLogger.Boot($"placement_options: {m_placementOptions.Summary}");
         }
 
@@ -264,6 +268,12 @@ namespace QuestObjectron
             }
         }
 
+        private void ApplyLaunchSettings()
+        {
+            m_minDetectionConfidence = ObjectronLaunchSettings.MinDetectionConfidence;
+            m_minTrackingConfidence = ObjectronLaunchSettings.MinTrackingConfidence;
+        }
+
         private void ApplyGraphTuning()
         {
             if (m_objectronGraph == null)
@@ -272,9 +282,7 @@ namespace QuestObjectron
             }
 
             m_objectronGraph.category = ObjectronGraph.Category.Chair;
-            m_objectronGraph.maxNumObjects = 3;
-            m_objectronGraph.minDetectionConfidence = m_minDetectionConfidence;
-            m_objectronGraph.minTrackingConfidence = m_minTrackingConfidence;
+            ObjectronLaunchSettings.ApplyToGraph(m_objectronGraph);
         }
 
         private IEnumerator Start()
