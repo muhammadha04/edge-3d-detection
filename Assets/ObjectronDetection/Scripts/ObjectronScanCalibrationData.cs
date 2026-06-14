@@ -41,6 +41,10 @@ namespace QuestObjectron
         public float[] scanToDetectionPosition;
         public float[] scanToDetectionRotationQuat;
         public float[] scanToDetectionScaleRatio;
+        /// <summary>Mesh localScale after user alignment (~1.0–1.3). v2: use this directly instead of box-size ratio.</summary>
+        public float[] calibratedMeshLocalScale;
+        public float[] referenceModelScaleM;
+        public float[] referenceBoxEdgeLengthsM;
 
         public static ObjectronScanCalibrationRecord Create(
             int objectId,
@@ -71,9 +75,11 @@ namespace QuestObjectron
             var detectionPose = new Pose(detectionCenter, detectionRotation);
             var scanPose = new Pose(scanTransform.position, scanTransform.rotation);
             var relative = ComputeRelative(scanPose, detectionPose, scanTransform.lossyScale, detectionSize);
+            ObjectronBoxMetrics.TryGetAxisEdgeLengthsMeters(detectionCorners, out var referenceEdges);
 
             return new ObjectronScanCalibrationRecord
             {
+                version = "2",
                 savedAtUtc = DateTime.UtcNow.ToString("o"),
                 detectionObjectId = objectId,
                 detectionCornersWorld = Flatten(detectionCorners),
@@ -94,6 +100,9 @@ namespace QuestObjectron
                 scanToDetectionPosition = Vec(relative.position),
                 scanToDetectionRotationQuat = Quat(relative.rotation),
                 scanToDetectionScaleRatio = Vec(relative.scaleRatio),
+                calibratedMeshLocalScale = Vec(scanTransform.lossyScale),
+                referenceModelScaleM = Vec(detectionModelScale),
+                referenceBoxEdgeLengthsM = Vec(referenceEdges),
             };
         }
 
@@ -122,34 +131,87 @@ namespace QuestObjectron
 
         public bool TryApplyMeshPlacement(Vector3[] detectionCorners, out ObjectronScanMeshPlacement placement)
         {
+            return TryApplyMeshPlacement(detectionCorners, null, out placement);
+        }
+
+        public bool TryApplyMeshPlacement(
+            Vector3[] detectionCorners,
+            Vector3? currentModelScale,
+            out ObjectronScanMeshPlacement placement)
+        {
             placement = default;
             if (!HasRelativeTransform() || detectionCorners == null || detectionCorners.Length < 9)
             {
                 return false;
             }
 
-            if (!ObjectronOrientedBoxFitter.TryFitTransform(
-                    detectionCorners,
-                    out var center,
-                    out var rotation,
-                    out var detectionSize))
+            if (!TryGetDetectionPose(detectionCorners, out var center, out var rotation))
             {
-                center = detectionCorners[0];
-                rotation = Quaternion.identity;
-                detectionSize = Vector3.one;
+                return false;
             }
 
             var detectionPose = new Pose(center, rotation);
             var relativePos = ToVec3(scanToDetectionPosition);
             var relativeRot = ToQuat(scanToDetectionRotationQuat);
-            var scaleRatio = ToVec3(scanToDetectionScaleRatio);
             placement = new ObjectronScanMeshPlacement
             {
                 Position = detectionPose.position + detectionPose.rotation * relativePos,
                 Rotation = detectionPose.rotation * relativeRot,
-                LocalScale = Vector3.Scale(detectionSize, scaleRatio),
+                LocalScale = ResolveMeshLocalScale(detectionCorners, currentModelScale),
                 IsValid = true,
             };
+            return true;
+        }
+
+        private Vector3 ResolveMeshLocalScale(Vector3[] detectionCorners, Vector3? currentModelScale)
+        {
+            var baseScale = GetCalibratedMeshLocalScale();
+
+            if (currentModelScale.HasValue && referenceModelScaleM != null && referenceModelScaleM.Length >= 3)
+            {
+                var reference = ToVec3(referenceModelScaleM);
+                var current = currentModelScale.Value;
+                var refAvg = (reference.x + reference.y + reference.z) / 3f;
+                var curAvg = (current.x + current.y + current.z) / 3f;
+                if (refAvg > 0.001f && curAvg > 0.001f)
+                {
+                    var distanceFactor = curAvg / refAvg;
+                    baseScale *= distanceFactor;
+                }
+            }
+
+            return baseScale;
+        }
+
+        public Vector3 GetCalibratedMeshLocalScale()
+        {
+            if (calibratedMeshLocalScale != null && calibratedMeshLocalScale.Length >= 3)
+            {
+                return ToVec3(calibratedMeshLocalScale);
+            }
+
+            if (scanLossyScale != null && scanLossyScale.Length >= 3)
+            {
+                return ToVec3(scanLossyScale);
+            }
+
+            if (scanLocalScale != null && scanLocalScale.Length >= 3)
+            {
+                return ToVec3(scanLocalScale);
+            }
+
+            return Vector3.one;
+        }
+
+        private static bool TryGetDetectionPose(Vector3[] corners, out Vector3 center, out Quaternion rotation)
+        {
+            center = corners[0];
+            if (ObjectronOrientedBoxFitter.TryFitTransform(corners, out _, out rotation, out _))
+            {
+                return true;
+            }
+
+            rotation = Quaternion.identity;
             return true;
         }
 
@@ -158,8 +220,9 @@ namespace QuestObjectron
             && scanToDetectionPosition.Length >= 3
             && scanToDetectionRotationQuat != null
             && scanToDetectionRotationQuat.Length >= 4
-            && scanToDetectionScaleRatio != null
-            && scanToDetectionScaleRatio.Length >= 3;
+            && (calibratedMeshLocalScale != null && calibratedMeshLocalScale.Length >= 3
+                || scanLossyScale != null && scanLossyScale.Length >= 3
+                || scanLocalScale != null && scanLocalScale.Length >= 3);
 
         public string ToDebugString()
         {

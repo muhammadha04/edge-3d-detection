@@ -387,11 +387,11 @@ Rounded (`MODEL_SCALED_CAM_PLANE`): `(2.14, 1.72, 1.93)`
 
 Apply math (`ObjectronScanCalibrationRecord.TryApplyMeshPlacement`):
 
-- `worldRotation = detectionBoxRotation * scanToDetectionRotation`
-- `worldPosition = detectionBoxCenter + detectionBoxRotation * scanToDetectionPosition`
-- `localScale = detectionBoxSize * scanToDetectionScaleRatio` (per axis)
+- **Scale:** uses your tuned `calibratedMeshLocalScale` (~**1.19** from calibration), NOT `detectionBoxSize × scaleRatio` (that produced giant meshes).
+- Optional distance tweak: scales slightly if MediaPipe model scale differs from reference.
+- **Rotation / position:** `detectionBoxRotation × scanToDetectionRotation` and box-local offset from calibration save.
 
-Default rotation quat from 2026-06-14 save: `(0.172, 0.910, 0.378, 0.014)` relative to each detection box.
+If rotation/position look wrong after rebuild, **recalibrate once** (B → trigger → adjust → Left Y → Left X) and pull the new JSON — an early save may have captured spawn-at-aim position instead of your final alignment.
 
 ---
 

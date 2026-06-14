@@ -71,7 +71,7 @@ namespace QuestObjectron
             m_isFrozen = false;
         }
 
-        public bool TrySpawnAtCalibratedBox(Vector3[] detectionCorners)
+        public bool TrySpawnAtCalibratedBox(Vector3[] detectionCorners, Vector3? modelScale = null)
         {
             if (HasSpawned)
             {
@@ -80,7 +80,7 @@ namespace QuestObjectron
             }
 
             var calibration = ObjectronScanCalibrationDefaults.Get();
-            if (calibration == null || !calibration.TryApplyMeshPlacement(detectionCorners, out var placement))
+            if (calibration == null || !calibration.TryApplyMeshPlacement(detectionCorners, modelScale, out var placement))
             {
                 QuestObjectronLogger.Err("scan_calibration spawn failed — no default calibration for detection box");
                 return false;

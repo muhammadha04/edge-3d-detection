@@ -24,17 +24,14 @@ namespace QuestObjectron
 
         public void Localize(IReadOnlyList<Vector3[]> detectionBoxes)
         {
+            Localize(detectionBoxes, null);
+        }
+
+        public void Localize(IReadOnlyList<Vector3[]> detectionBoxes, IReadOnlyList<Vector3> modelScales)
+        {
             var calibration = ObjectronScanCalibrationDefaults.Get();
             if (calibration == null)
             {
-                ClearAll();
-                return;
-            }
-
-            var prefab = Resources.Load<GameObject>(PrefabResourcesPath);
-            if (prefab == null)
-            {
-                QuestObjectronLogger.Err($"scan_mesh prefab missing at Resources/{PrefabResourcesPath}");
                 ClearAll();
                 return;
             }
@@ -58,7 +55,13 @@ namespace QuestObjectron
                 }
 
                 var corners = detectionBoxes[i];
-                if (!calibration.TryApplyMeshPlacement(corners, out var placement))
+                Vector3? modelScale = null;
+                if (modelScales != null && i < modelScales.Count)
+                {
+                    modelScale = modelScales[i];
+                }
+
+                if (!calibration.TryApplyMeshPlacement(corners, modelScale, out var placement))
                 {
                     instance.gameObject.SetActive(false);
                     continue;
@@ -70,7 +73,7 @@ namespace QuestObjectron
                 m_activeCount++;
             }
 
-            QuestObjectronLogger.Viz($"scan_mesh localized count={m_activeCount}");
+            QuestObjectronLogger.Viz($"scan_mesh localized count={m_activeCount} scale={calibration.GetCalibratedMeshLocalScale()}");
         }
 
         public void ClearAllForSceneExit()

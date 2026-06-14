@@ -765,7 +765,7 @@ namespace QuestObjectron
             m_lastWorldBoxes = BuildLocalizedWorldBoxes();
             m_bboxDrawer?.SetDetections(null);
             m_questVisuals?.Localize(m_lastWorldBoxes);
-            m_scanMeshVisuals?.Localize(m_lastWorldBoxes);
+            m_scanMeshVisuals?.Localize(m_lastWorldBoxes, BuildLocalizedModelScales());
 
             if (m_lastWorldBoxes.Count > 0 && m_localizedChairs.Count > 0)
             {
@@ -792,6 +792,27 @@ namespace QuestObjectron
             }
 
             return boxes;
+        }
+
+        private List<Vector3> BuildLocalizedModelScales()
+        {
+            var scales = new List<Vector3>(m_localizedChairs.Count);
+            foreach (var chair in m_localizedChairs)
+            {
+                scales.Add(ReadAnnotationModelScale(chair.Annotation));
+            }
+
+            return scales;
+        }
+
+        private static Vector3 ReadAnnotationModelScale(ObjectAnnotation ann)
+        {
+            if (ann?.Scale != null && ann.Scale.Count >= 3)
+            {
+                return new Vector3(ann.Scale[0], ann.Scale[1], ann.Scale[2]);
+            }
+
+            return Vector3.zero;
         }
 
         private void ReportDetectionHud(FrameAnnotation lifted, Pose cameraPose, int frameCount)
