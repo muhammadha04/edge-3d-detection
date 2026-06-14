@@ -914,7 +914,7 @@ GameObject:
   - component: {fileID: 910001018}
   - component: {fileID: 910001021}
   - component: {fileID: 910001020}
-  - component: {fileID: 910001019}
+  - component: {fileID: 910001022}
   m_Layer: 0
   m_Name: Objectron2DDebug
   m_TagString: Untagged
@@ -995,27 +995,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 350a9231407db7e49a021018d4ffe4ea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!114 &910001019
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 910001011}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e75b7bbfbcf44d244bbc6c5af9542828, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::QuestObjectron.ObjectronPassthroughOverlay
-  m_cameraAccess: {fileID: 1373946501}
-  m_mirrorOverlayHorizontal: 1
-  m_boxColor: {r: 0.1, g: 1, b: 0.25, a: 0.95}
-  m_keypointColor: {r: 1, g: 0.85, b: 0.1, a: 1}
-  m_drawKeypoints: 1
-  m_borderThickness: 4
-  m_showDepthInsideBoxes: 0
-  m_depthProvider: {fileID: 0}
-  m_depthFillAlpha: 0.62
 --- !u!114 &910001020
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1029,6 +1008,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::QuestObjectron.Objectron2DCameraFeedView
   m_cameraAccess: {fileID: 1373946501}
+  m_imageSource: {fileID: 0}
   m_image: {fileID: 1540722058}
   m_panelDistance: 1.15
   m_panelSize: {x: 1280, y: 960}
@@ -1050,13 +1030,28 @@ MonoBehaviour:
   m_objectronGraph: {fileID: 910001015}
   m_bootstrap: {fileID: 910001003}
   m_textureFramePool: {fileID: 910001016}
-  m_overlay: {fileID: 910001019}
+  m_feedOverlay: {fileID: 910001022}
   m_cameraFeedView: {fileID: 910001020}
   m_cameraFeedImage: {fileID: 1540722058}
   m_cameraFeedAlpha: 0.92
   m_runningMode: 0
   m_minDetectionConfidence: 0.35
   m_minTrackingConfidence: 0.55
+--- !u!114 &910001022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910001011}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5ec98eeb24d0604ea1cabc0256ccfaf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::QuestObjectron.Objectron2DFeedOverlay
+  m_feedRect: {fileID: 0}
+  m_boxColor: {r: 0.1, g: 1, b: 0.25, a: 0.95}
+  m_borderThickness: 5
 --- !u!1 &1144808057
 GameObject:
   m_ObjectHideFlags: 0

@@ -160,6 +160,11 @@ namespace QuestObjectron
 
         private void CleanupActiveSession()
         {
+            if (m_shutdownForSceneExit && m_pipeline == null && !m_graphReady)
+            {
+                return;
+            }
+
             m_shutdownForSceneExit = true;
             m_visuals?.Clear();
             m_lastCorners = null;
@@ -170,11 +175,8 @@ namespace QuestObjectron
             m_frameId = 0;
             m_state = BoxDebugState.Booting;
 
-            if (m_pipeline != null)
-            {
-                StopCoroutine(m_pipeline);
-                m_pipeline = null;
-            }
+            StopAllCoroutines();
+            m_pipeline = null;
 
             if (m_objectronGraph != null && m_runningMode == RunningMode.Async)
             {
@@ -375,9 +377,20 @@ namespace QuestObjectron
 
         private IEnumerator RunPipeline()
         {
-            while (m_cameraAccess == null || !m_cameraAccess.IsPlaying)
+            if (m_cameraAccess == null)
             {
-                yield return null;
+                m_cameraAccess = FindAnyObjectByType<PassthroughCameraAccess>();
+            }
+
+            if (m_imageSource is PassthroughImageSource passthroughSrc)
+            {
+                ObjectronPassthroughCameraHelper.RebindImageSource(m_cameraAccess, passthroughSrc);
+            }
+
+            yield return ObjectronPassthroughCameraHelper.WaitUntilCameraPlaying(m_cameraAccess);
+            if (m_shutdownForSceneExit || m_cameraAccess == null || !m_cameraAccess.IsPlaying)
+            {
+                yield break;
             }
 
             yield return m_imageSource.Play();
@@ -522,7 +535,7 @@ namespace QuestObjectron
 
             if (m_bootstrap == null)
             {
-                m_bootstrap = FindAnyObjectByType<Bootstrap>();
+                m_bootstrap = ObjectronPassthroughCameraHelper.FindSceneBootstrap(this);
             }
 
             if (m_bootstrap == null)

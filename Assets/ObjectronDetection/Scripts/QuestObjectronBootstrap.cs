@@ -23,7 +23,6 @@ namespace QuestObjectron
 
                 var go = new GameObject("Bootstrap");
                 m_bootstrap = go.AddComponent<Bootstrap>();
-                DontDestroyOnLoad(go);
                 QuestObjectronLogger.Boot("created_runtime_bootstrap");
             }
         }

@@ -31,6 +31,11 @@ namespace QuestObjectron
 
         public bool IsDepthReady => m_depthManager != null && m_depthManager.IsDepthAvailable;
 
+        private void OnEnable()
+        {
+            m_shutdownForSceneExit = false;
+        }
+
         private void Start()
         {
             if (!m_shutdownForSceneExit)

@@ -1,5 +1,6 @@
 // Tear down Objectron detection when leaving chair/box scenes for the start menu.
 
+using Mediapipe.Unity;
 using UnityEngine;
 
 namespace QuestObjectron
@@ -108,7 +109,24 @@ namespace QuestObjectron
             }
 
             BeginFreshSession();
+            DestroyStaleDontDestroyOnLoadBootstraps();
             QuestObjectronLogger.Boot("objectron_session_cleanup complete");
+        }
+
+        private static void DestroyStaleDontDestroyOnLoadBootstraps()
+        {
+            foreach (var bootstrap in Object.FindObjectsByType<Bootstrap>(
+                         FindObjectsInactive.Include,
+                         FindObjectsSortMode.None))
+            {
+                if (bootstrap == null || bootstrap.gameObject.scene.name != "DontDestroyOnLoad")
+                {
+                    continue;
+                }
+
+                Object.Destroy(bootstrap.gameObject);
+                QuestObjectronLogger.Boot("destroyed stale DontDestroyOnLoad Bootstrap");
+            }
         }
     }
 }

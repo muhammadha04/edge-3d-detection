@@ -373,7 +373,6 @@ namespace QuestObjectron
             camPlaneFitScore = float.NegativeInfinity;
 
             options ??= new ObjectronPlacementOptions();
-            var placementRot = options.GetPlacementPose(cameraPose).rotation;
             var rotWorld = cameraPose.rotation * rotCam.rotation;
             var camRight = cameraPose.rotation * Vector3.right;
             var camUp = cameraPose.rotation * Vector3.up;
@@ -389,8 +388,6 @@ namespace QuestObjectron
             var targetHalfH = depth.CameraLocalSizeM.y * 0.5f;
             scaleX = Mathf.Clamp(targetHalfW / projHalfW, 0.35f, 2.5f);
             scaleY = Mathf.Clamp(targetHalfH / projHalfH, 0.35f, 2.5f);
-            var scaleYBefore = scaleY;
-            var scaleXBefore = scaleX;
             var avgScale = (scaleX + scaleY) * 0.5f;
             var scaleAsym = Mathf.Abs(scaleX - scaleY) / Mathf.Max(avgScale, 0.01f);
             if (scaleAsym > 0.28f)
@@ -402,7 +399,9 @@ namespace QuestObjectron
             scaleZ = Mathf.Clamp(avgScale, 0.35f, 2.5f);
 
             var scaledHalf = new Vector3(half.x * scaleX, half.y * scaleY, half.z * scaleZ);
-            var depthTranslationCam = Quaternion.Inverse(placementRot) * (depth.WorldCenter - cameraPose.position);
+            var placementPose = options.GetPlacementPose(cameraPose);
+            var depthTranslationCam = Quaternion.Inverse(placementPose.rotation)
+                * (depth.WorldCenter - placementPose.position);
 
             corners = new Vector3[9];
             corners[0] = depth.WorldCenter;

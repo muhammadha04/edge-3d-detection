@@ -46,6 +46,8 @@ namespace QuestObjectron
         private readonly ObjectronFramePoseQueue m_framePoses = new();
         private FrameAnnotation m_pendingFrame;
         private bool m_hasPendingFrame;
+        private List<NormalizedRect> m_pendingStageOneRects;
+        private List<NormalizedRect> m_lastStageOneRects;
 
         private ObjectronWorldPlacement m_worldPlacement;
 
@@ -347,6 +349,11 @@ namespace QuestObjectron
 
         private void CleanupActiveSession()
         {
+            if (m_shutdownForSceneExit && m_pipeline == null && !m_graphReady)
+            {
+                return;
+            }
+
             m_shutdownForSceneExit = true;
             ClearLocalizedStateSilent();
             m_frameId = 0;
@@ -354,22 +361,23 @@ namespace QuestObjectron
             m_lastLoggedLocalizedCount = -1;
             m_emptyLogCount = 0;
 
-            if (m_pipeline != null)
-            {
-                StopCoroutine(m_pipeline);
-                m_pipeline = null;
-            }
+            StopAllCoroutines();
+            m_pipeline = null;
 
             if (m_objectronGraph != null && m_runningMode == RunningMode.Async)
             {
                 m_objectronGraph.OnLiftedObjectsOutput -= OnLiftedObjectsAsync;
+                m_objectronGraph.OnMultiBoxRectsOutput -= OnMultiBoxRectsAsync;
             }
 
             lock (m_pendingLock)
             {
                 m_hasPendingFrame = false;
                 m_pendingFrame = null;
+                m_pendingStageOneRects = null;
             }
+
+            m_lastStageOneRects = null;
 
             m_framePoses.Clear();
             m_graphReady = false;
@@ -407,7 +415,7 @@ namespace QuestObjectron
         {
             if (m_bootstrap == null)
             {
-                m_bootstrap = FindAnyObjectByType<Bootstrap>();
+                m_bootstrap = ObjectronPassthroughCameraHelper.FindSceneBootstrap(this);
             }
 
             if (m_bootstrap == null)
@@ -419,6 +427,11 @@ namespace QuestObjectron
             var bootstrapTimeout = Time.realtimeSinceStartup + 30f;
             while (!m_bootstrap.isFinished)
             {
+                if (m_shutdownForSceneExit)
+                {
+                    yield break;
+                }
+
                 if (Time.realtimeSinceStartup > bootstrapTimeout)
                 {
                     QuestObjectronLogger.Err("mediapipe_bootstrap=timeout (check earlier Unity errors from Bootstrap.Init)");
@@ -434,9 +447,20 @@ namespace QuestObjectron
 
         private IEnumerator RunPipeline()
         {
-            while (m_cameraAccess == null || !m_cameraAccess.IsPlaying)
+            if (m_cameraAccess == null)
             {
-                yield return null;
+                m_cameraAccess = FindAnyObjectByType<PassthroughCameraAccess>();
+            }
+
+            if (m_imageSource is PassthroughImageSource passthroughSrc)
+            {
+                ObjectronPassthroughCameraHelper.RebindImageSource(m_cameraAccess, passthroughSrc);
+            }
+
+            yield return ObjectronPassthroughCameraHelper.WaitUntilCameraPlaying(m_cameraAccess);
+            if (m_shutdownForSceneExit || m_cameraAccess == null || !m_cameraAccess.IsPlaying)
+            {
+                yield break;
             }
 
             yield return m_imageSource.Play();
@@ -487,6 +511,8 @@ namespace QuestObjectron
             if (m_runningMode == RunningMode.Async)
             {
                 m_objectronGraph.OnLiftedObjectsOutput += OnLiftedObjectsAsync;
+                m_objectronGraph.OnMultiBoxRectsOutput += OnMultiBoxRectsAsync;
+                m_lastStageOneRects = null;
             }
 
             m_objectronGraph.StartRun(m_imageSource);
@@ -537,15 +563,16 @@ namespace QuestObjectron
                     case RunningMode.NonBlockingSync:
                     {
                         FrameAnnotation lifted = null;
+                        List<NormalizedRect> stageOneRects = null;
                         yield return new WaitUntil(() =>
-                            m_objectronGraph.TryGetNext(out lifted, out _, out _, false));
-                        ProcessDetections(lifted, cameraPose, t0);
+                            m_objectronGraph.TryGetNext(out lifted, out stageOneRects, out _, false));
+                        ProcessDetections(lifted, cameraPose, stageOneRects, t0);
                         break;
                     }
                     case RunningMode.Sync:
-                        if (m_objectronGraph.TryGetNext(out var liftedSync, out _, out _, true))
+                        if (m_objectronGraph.TryGetNext(out var liftedSync, out var rectsSync, out _, true))
                         {
-                            ProcessDetections(liftedSync, cameraPose, t0);
+                            ProcessDetections(liftedSync, cameraPose, rectsSync, t0);
                         }
                         else
                         {
@@ -574,7 +601,22 @@ namespace QuestObjectron
             lock (m_pendingLock)
             {
                 m_pendingFrame = e.value;
+                m_pendingStageOneRects = m_lastStageOneRects;
                 m_hasPendingFrame = true;
+            }
+        }
+
+        /// <summary>Stage-1 SSD crop rects (multi_box_rects stream).</summary>
+        private void OnMultiBoxRectsAsync(object sender, OutputEventArgs<List<NormalizedRect>> e)
+        {
+            if (!m_graphReady)
+            {
+                return;
+            }
+
+            lock (m_pendingLock)
+            {
+                m_lastStageOneRects = e.value;
             }
         }
 
@@ -586,6 +628,7 @@ namespace QuestObjectron
             }
 
             FrameAnnotation frame;
+            List<NormalizedRect> stageOneRects;
             lock (m_pendingLock)
             {
                 if (!m_hasPendingFrame)
@@ -600,6 +643,7 @@ namespace QuestObjectron
                 }
 
                 frame = m_pendingFrame;
+                stageOneRects = m_pendingStageOneRects;
                 m_hasPendingFrame = false;
                 m_lastDetectionProcessTime = now;
             }
@@ -610,10 +654,14 @@ namespace QuestObjectron
                 m_worldPlacement.SetMirrorHorizontal(m_imageSource.isHorizontallyFlipped);
             }
 
-            ProcessDetections(frame, cameraPose, m_lastDetectionProcessTime);
+            ProcessDetections(frame, cameraPose, stageOneRects, m_lastDetectionProcessTime);
         }
 
-        private void ProcessDetections(FrameAnnotation lifted, Pose cameraPose, float startTime)
+        private void ProcessDetections(
+            FrameAnnotation lifted,
+            Pose cameraPose,
+            List<NormalizedRect> stageOneRects,
+            float startTime)
         {
             if (lifted == null || lifted.Annotations == null || lifted.Annotations.Count == 0)
             {
@@ -624,14 +672,15 @@ namespace QuestObjectron
             m_emptyLogCount = 0;
 
             var count = lifted.Annotations.Count;
+            var stageOneCount = stageOneRects?.Count ?? 0;
             var ms = (Time.realtimeSinceStartup - startTime) * 1000f;
             if (count != m_lastLoggedOkCount)
             {
                 m_lastLoggedOkCount = count;
-                QuestObjectronLogger.Detect($"ok count={count} ms={ms:F0}");
+                QuestObjectronLogger.Detect($"ok count={count} stage1={stageOneCount} ms={ms:F0}");
             }
 
-            var placementOutputs = m_worldPlacement.PlaceDetailed(lifted, cameraPose, null);
+            var placementOutputs = m_worldPlacement.PlaceDetailed(lifted, cameraPose, null, stageOneRects);
             ProcessChairPlacements(lifted, placementOutputs);
 
             ReportDetectionHud(lifted, cameraPose, count);

@@ -154,7 +154,8 @@ namespace QuestObjectron
         public List<PlacementOutput> PlaceDetailed(
             FrameAnnotation frame,
             Pose cameraPose,
-            IReadOnlyList<ObjectronOverlayRect> overlayRects = null)
+            IReadOnlyList<ObjectronOverlayRect> overlayRects = null,
+            IReadOnlyList<NormalizedRect> stageOneRects = null)
         {
             var results = new List<PlacementOutput>();
             if (frame?.Annotations == null)
@@ -171,7 +172,13 @@ namespace QuestObjectron
                     overlayRect = overlayRects[index];
                 }
 
-                var output = PlaceOne(annotation, cameraPose, overlayRect);
+                NormalizedRect stageOneRect = null;
+                if (stageOneRects != null && index < stageOneRects.Count)
+                {
+                    stageOneRect = stageOneRects[index];
+                }
+
+                var output = PlaceOne(annotation, cameraPose, overlayRect, stageOneRect);
                 if (output.Corners == null)
                 {
                     QuestObjectronLogger.World($"objectId={annotation.ObjectId} placement=failed");
@@ -229,7 +236,8 @@ namespace QuestObjectron
         private PlacementOutput PlaceOne(
             ObjectAnnotation annotation,
             Pose cameraPose,
-            ObjectronOverlayRect? overlayRect)
+            ObjectronOverlayRect? overlayRect,
+            NormalizedRect stageOneRect = null)
         {
             var placed = TryPlaceAnnotation(annotation, cameraPose);
             if (placed.Corners == null)
@@ -254,12 +262,25 @@ namespace QuestObjectron
                          m_options.MirrorInferenceHorizontal,
                          out normViewport))
             {
-                return new PlacementOutput(
-                    annotation.ObjectId,
-                    rawCorners,
-                    placed.Method,
-                    BuildDebugReport(annotation, cameraPose, placed.Method, placed.Method, rawCenter, rawExtent,
-                        rawCenter, rawExtent, 1f, default, false));
+                if (!ObjectronViewportCenterAnchor.TryGetNormViewportCenter(
+                        annotation,
+                        stageOneRect,
+                        m_options.MirrorInferenceHorizontal,
+                        out var anchorCenter))
+                {
+                    return new PlacementOutput(
+                        annotation.ObjectId,
+                        rawCorners,
+                        placed.Method,
+                        BuildDebugReport(annotation, cameraPose, placed.Method, placed.Method, rawCenter, rawExtent,
+                            rawCenter, rawExtent, 1f, default, false));
+                }
+
+                normViewport = new UnityEngine.Rect(
+                    anchorCenter.x - 0.05f,
+                    anchorCenter.y - 0.05f,
+                    0.1f,
+                    0.1f);
             }
 
             if (!ObjectronDepthPlacementRefiner.TryMeasureViewportRect(
@@ -381,6 +402,16 @@ namespace QuestObjectron
 
             ObjectronBoxValidation.TryGetExtentMeters(finalCorners, out var refinedExtent);
             var refinedCenter = finalCorners[0];
+            ObjectronLateralCenterRefiner.TryRefine(
+                finalCorners,
+                annotation,
+                stageOneRect,
+                m_cameraAccess,
+                m_raycast,
+                cameraPose,
+                m_options,
+                out _);
+            refinedCenter = finalCorners[0];
             ObjectronBoxProjectionDebug.LogComparison(
                 annotation.ObjectId,
                 normViewport,
