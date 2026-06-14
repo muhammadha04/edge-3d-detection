@@ -9,6 +9,10 @@ namespace QuestObjectron
         private const string ResourcesPath = "ScanCalibration/default_chair_calibration";
 
         private static ObjectronScanCalibrationRecord s_cached;
+        private static bool s_fromDeviceSave;
+
+        /// <summary>True when calibration was loaded from a user save on device (Left X in scan calibration).</summary>
+        public static bool IsFromDeviceSave => s_fromDeviceSave;
 
         public static ObjectronScanCalibrationRecord Get()
         {
@@ -17,11 +21,18 @@ namespace QuestObjectron
                 return s_cached;
             }
 
+            s_fromDeviceSave = false;
             var deviceRecord = ObjectronScanCalibrationStore.LoadLatest();
             if (deviceRecord != null && deviceRecord.HasRelativeTransform())
             {
                 s_cached = deviceRecord;
-                QuestObjectronLogger.Boot("scan_calibration using device saved defaults");
+                s_fromDeviceSave = true;
+                var scaleFactor = deviceRecord.GetMeshScaleFactor();
+                var rotDeg = deviceRecord.GetRotationOffsetDegrees();
+                QuestObjectronLogger.Boot(
+                    $"scan_calibration device save scaleFactor={scaleFactor:F3} rotOffset={rotDeg:F1}° " +
+                    $"spawnRelativeRotation={deviceRecord.spawnRelativeRotation} " +
+                    $"applyRotInLive={deviceRecord.ShouldApplySavedRotation()}");
                 return s_cached;
             }
 
@@ -43,6 +54,7 @@ namespace QuestObjectron
         public static void ClearCache()
         {
             s_cached = null;
+            s_fromDeviceSave = false;
         }
     }
 }

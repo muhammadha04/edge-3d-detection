@@ -163,6 +163,18 @@ namespace PassthroughCameraSamples.StartScene
                 onValueChanged: value => ObjectronLaunchSettings.MinTrackingConfidence = value,
                 formatValue: value => value.ToString("F2"),
                 targetCanvas: DebugUIBuilder.DEBUG_PANE_LEFT);
+
+            uiBuilder.AddToggle(
+                "Chair mesh (.obj) in live scan",
+                toggle => ObjectronLaunchSettings.ShowScanMeshOverlay = toggle.isOn,
+                ObjectronLaunchSettings.ShowScanMeshOverlay,
+                DebugUIBuilder.DEBUG_PANE_LEFT);
+
+            uiBuilder.AddToggle(
+                "Live tune mesh (Right B / Left X)",
+                toggle => ObjectronLaunchSettings.EnableLiveMeshTune = toggle.isOn,
+                ObjectronLaunchSettings.EnableLiveMeshTune,
+                DebugUIBuilder.DEBUG_PANE_LEFT);
         }
     }
 }

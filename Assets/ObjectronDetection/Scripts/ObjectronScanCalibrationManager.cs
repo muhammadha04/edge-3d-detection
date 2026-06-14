@@ -287,7 +287,8 @@ namespace QuestObjectron
                 m_lastRotationEuler,
                 m_lastCameraPose,
                 m_scanManipulator.ScanRoot,
-                m_scanManipulator.MeshBoundsLocal);
+                m_scanManipulator.MeshBoundsLocal,
+                m_scanManipulator.SpawnReference);
 
             if (record == null)
             {

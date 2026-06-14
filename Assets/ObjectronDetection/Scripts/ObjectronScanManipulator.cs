@@ -25,6 +25,7 @@ namespace QuestObjectron
         private Transform m_scanRoot;
         private bool m_isFrozen;
         private Bounds m_meshBoundsLocal = new(Vector3.zero, Vector3.one);
+        private ObjectronScanCalibrationRecord.SpawnReference m_spawnReference;
         private OVRCameraRig m_cameraRig;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -40,6 +41,7 @@ namespace QuestObjectron
         public bool HasSpawned => m_scanRoot != null;
         public bool IsFrozen => m_isFrozen;
         public Transform ScanRoot => m_scanRoot;
+        public ObjectronScanCalibrationRecord.SpawnReference SpawnReference => m_spawnReference;
 
         public void Configure(GameObject scanPrefab, string resourcesPath = null)
         {
@@ -69,26 +71,17 @@ namespace QuestObjectron
 
             ResetGrabState();
             m_isFrozen = false;
+            m_spawnReference = default;
         }
 
         public bool TrySpawnAtDetectionBox(Vector3[] detectionCorners)
         {
-            if (HasSpawned || detectionCorners == null || detectionCorners.Length < 9)
+            if (HasSpawned || !ObjectronScanCalibrationRecord.TryGetSpawnPlacement(detectionCorners, out var placement))
             {
                 return false;
             }
 
-            var center = detectionCorners[0];
-            var rotation = Quaternion.identity;
-            ObjectronOrientedBoxFitter.TryFitTransform(detectionCorners, out _, out rotation, out _);
-
-            return TrySpawnAtPlacement(new ObjectronScanMeshPlacement
-            {
-                Position = center,
-                Rotation = rotation,
-                LocalScale = Vector3.one,
-                IsValid = true,
-            });
+            return TrySpawnAtPlacement(placement);
         }
 
         /// <summary>Automatic overlay placement using saved calibration (chair detection only).</summary>
@@ -130,10 +123,17 @@ namespace QuestObjectron
             EnsureVisibleMaterials(instance);
             m_scanRoot = instance.transform;
             m_meshBoundsLocal = ComputeMeshBoundsLocal(instance);
+            m_spawnReference = new ObjectronScanCalibrationRecord.SpawnReference
+            {
+                Position = placement.Position,
+                Rotation = placement.Rotation,
+                LocalScale = placement.LocalScale,
+                IsValid = true,
+            };
             m_isFrozen = false;
             ResetGrabState();
             QuestObjectronLogger.Viz(
-                $"scan_calibration spawned calibrated pos=({placement.Position.x:F2},{placement.Position.y:F2},{placement.Position.z:F2}) " +
+                $"scan_calibration spawned pos=({placement.Position.x:F2},{placement.Position.y:F2},{placement.Position.z:F2}) " +
                 $"scale=({placement.LocalScale.x:F2},{placement.LocalScale.y:F2},{placement.LocalScale.z:F2})");
             return true;
         }
@@ -166,6 +166,13 @@ namespace QuestObjectron
             EnsureVisibleMaterials(instance);
             m_scanRoot = instance.transform;
             m_meshBoundsLocal = ComputeMeshBoundsLocal(instance);
+            m_spawnReference = new ObjectronScanCalibrationRecord.SpawnReference
+            {
+                Position = spawnPoint,
+                Rotation = controller.rotation,
+                LocalScale = instance.transform.localScale,
+                IsValid = true,
+            };
             m_isFrozen = false;
             ResetGrabState();
             QuestObjectronLogger.Viz(
@@ -277,7 +284,14 @@ namespace QuestObjectron
 
             var scaleFactor = distance / Mathf.Max(m_twoHandStartDistance, 0.05f);
             m_scanRoot.localScale = m_twoHandStartScale * scaleFactor;
-            m_scanRoot.position = m_twoHandStartPosition + (midpoint - m_twoHandStartMidpoint);
+            if (m_spawnReference.IsValid)
+            {
+                m_scanRoot.position = m_spawnReference.Position;
+            }
+            else
+            {
+                m_scanRoot.position = m_twoHandStartPosition + (midpoint - m_twoHandStartMidpoint);
+            }
         }
 #endif
 

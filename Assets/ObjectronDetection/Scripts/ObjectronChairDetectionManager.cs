@@ -31,6 +31,7 @@ namespace QuestObjectron
         [SerializeField] private ObjectronDetectionDebug m_detectionDebug;
         [SerializeField] private ObjectronQuestVisuals m_questVisuals;
         [SerializeField] private ObjectronScanMeshVisuals m_scanMeshVisuals;
+        [SerializeField] private ObjectronLiveMeshTuner m_liveMeshTuner;
         [SerializeField] private ObjectronHeadsetHud m_headsetHud;
         [SerializeField] private ObjectronPassthroughOverlay m_passthroughOverlay;
         [SerializeField] private ObjectronEnvironmentDepthProvider m_environmentDepthProvider;
@@ -132,6 +133,12 @@ namespace QuestObjectron
                     ?? gameObject.AddComponent<ObjectronScanMeshVisuals>();
             }
 
+            if (m_liveMeshTuner == null)
+            {
+                m_liveMeshTuner = GetComponent<ObjectronLiveMeshTuner>()
+                    ?? gameObject.AddComponent<ObjectronLiveMeshTuner>();
+            }
+
             if (m_headsetHud == null)
             {
                 m_headsetHud = GetComponent<ObjectronHeadsetHud>()
@@ -155,7 +162,10 @@ namespace QuestObjectron
 
             EnsurePlacementFixMenu();
             m_questVisuals.Prewarm();
-            m_scanMeshVisuals.Prewarm();
+            if (ObjectronLaunchSettings.ShowScanMeshOverlay)
+            {
+                m_scanMeshVisuals.Prewarm();
+            }
             m_bboxDrawer?.Prewarm();
             m_detectionDebug?.Prewarm();
         }
@@ -163,6 +173,7 @@ namespace QuestObjectron
         private void Update()
         {
             TryControllerInput();
+            m_liveMeshTuner?.UpdateFrame();
             TryProcessPendingOnMainThread();
             MaybeLogRotationHint();
         }
@@ -176,8 +187,17 @@ namespace QuestObjectron
                 if (now - m_lastResetButtonTime >= ResetButtonCooldownSec)
                 {
                     m_lastResetButtonTime = now;
+                    m_liveMeshTuner?.ClearSelection();
                     ResetDetection();
                 }
+            }
+
+            if (ObjectronLaunchSettings.EnableLiveMeshTune
+                && ObjectronLaunchSettings.ShowScanMeshOverlay
+                && ObjectronQuestControllerButtons.LeftXPressed()
+                && m_cameraAccess != null)
+            {
+                m_liveMeshTuner?.TrySaveSelection(m_cameraAccess.GetCameraPose());
             }
 #endif
         }
@@ -190,6 +210,7 @@ namespace QuestObjectron
             m_lastLoggedLocalizedCount = -1;
             m_questVisuals?.ClearLocalization(silent: true);
             m_scanMeshVisuals?.Localize(null);
+            m_liveMeshTuner?.ClearSelection();
             m_detectionDebug?.Clear();
             m_bboxDrawer?.SetDetections(null);
         }
@@ -259,7 +280,9 @@ namespace QuestObjectron
             EnsureDebug();
             QuestObjectronLogger.Boot(
                 $"launch_settings max_objects={MaxLocalizedChairs} " +
-                $"detect_conf={m_minDetectionConfidence:F2} track_conf={m_minTrackingConfidence:F2}");
+                $"detect_conf={m_minDetectionConfidence:F2} track_conf={m_minTrackingConfidence:F2} " +
+                $"scan_mesh={ObjectronLaunchSettings.ShowScanMeshOverlay} " +
+                $"live_tune={ObjectronLaunchSettings.EnableLiveMeshTune}");
             QuestObjectronLogger.Boot($"placement_options: {m_placementOptions.Summary}");
         }
 
@@ -765,7 +788,7 @@ namespace QuestObjectron
             m_lastWorldBoxes = BuildLocalizedWorldBoxes();
             m_bboxDrawer?.SetDetections(null);
             m_questVisuals?.Localize(m_lastWorldBoxes);
-            m_scanMeshVisuals?.Localize(m_lastWorldBoxes, BuildLocalizedModelScales());
+            RefreshScanMeshVisuals();
 
             if (m_lastWorldBoxes.Count > 0 && m_localizedChairs.Count > 0)
             {
@@ -792,6 +815,35 @@ namespace QuestObjectron
             }
 
             return boxes;
+        }
+
+        private void RefreshScanMeshVisuals()
+        {
+            if (!ObjectronLaunchSettings.ShowScanMeshOverlay)
+            {
+                m_scanMeshVisuals?.Localize(null);
+                return;
+            }
+
+            m_scanMeshVisuals?.Localize(m_lastWorldBoxes, BuildLocalizedModelScales());
+        }
+
+        public void RefreshScanMeshVisualsAfterCalibrationSave()
+        {
+            ObjectronScanCalibrationDefaults.ClearCache();
+            RefreshScanMeshVisuals();
+        }
+
+        internal bool TryGetLocalizedChairForPoolIndex(int poolIndex, out ObjectronLocalizedChairState chair)
+        {
+            chair = null;
+            if (poolIndex < 0 || m_localizedChairs == null || poolIndex >= m_localizedChairs.Count)
+            {
+                return false;
+            }
+
+            chair = m_localizedChairs[poolIndex];
+            return chair?.Corners != null && chair.Corners.Length >= 9;
         }
 
         private List<Vector3> BuildLocalizedModelScales()
