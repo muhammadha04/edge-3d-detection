@@ -1,6 +1,5 @@
 // Select and tune chair mesh overlays during live detection; save spawns-relative calibration.
 
-using Mediapipe;
 using UnityEngine;
 
 namespace QuestObjectron
@@ -16,6 +15,7 @@ namespace QuestObjectron
         private Transform m_target;
         private int m_selectedPoolIndex = -1;
         private ObjectronScanCalibrationRecord.SpawnReference m_spawnReference;
+        private Quaternion m_uprightBaseRotation = Quaternion.identity;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         private Vector3? m_moveGrabOffset;
@@ -28,7 +28,10 @@ namespace QuestObjectron
 #endif
 
         public bool IsEnabled =>
-            ObjectronLaunchSettings.EnableLiveMeshTune && ObjectronLaunchSettings.ShowScanMeshOverlay;
+            ObjectronLaunchSettings.ShowScanMeshOverlay
+            && (ObjectronLaunchSettings.EnableLiveMeshTune || ObjectronLaunchSettings.EnableUprightPresetMode);
+
+        public bool IsUprightMode => ObjectronLaunchSettings.EnableUprightPresetMode;
 
         public int SelectedPoolIndex => m_selectedPoolIndex;
         public bool HasSelection => m_selectedPoolIndex >= 0 && m_target != null;
@@ -56,17 +59,19 @@ namespace QuestObjectron
             TrySelectOnRightB();
             TryDeselectOnRightA();
 
+#if UNITY_ANDROID && !UNITY_EDITOR
             if (HasSelection)
             {
                 UpdateManipulation();
             }
+#endif
         }
 
         public bool TrySaveSelection(Pose cameraPose)
         {
             if (!IsEnabled || !HasSelection)
             {
-                QuestObjectronLogger.Viz("live_tune save skipped — enable live tune and select a mesh (Right B)");
+                QuestObjectronLogger.Viz("live_tune save skipped — select a mesh with Right B first");
                 return false;
             }
 
@@ -84,16 +89,36 @@ namespace QuestObjectron
                 out var rotationEuler);
 
             var bounds = ObjectronScanMeshVisuals.ComputeMeshBoundsLocal(m_target);
-            var record = ObjectronScanCalibrationRecord.Create(
-                chair.ObjectId,
-                chair.Corners,
-                translation,
-                scale,
-                rotationEuler,
-                cameraPose,
-                m_target,
-                bounds,
-                m_spawnReference);
+            ObjectronScanCalibrationRecord record;
+
+            if (IsUprightMode)
+            {
+                record = ObjectronScanCalibrationRecord.CreateUprightPreset(
+                    chair.ObjectId,
+                    chair.Corners,
+                    translation,
+                    scale,
+                    rotationEuler,
+                    cameraPose,
+                    m_target,
+                    bounds,
+                    m_uprightBaseRotation);
+                QuestObjectronLogger.Detect(
+                    "live_tune saved upright preset — future chairs use world-up + your correction");
+            }
+            else
+            {
+                record = ObjectronScanCalibrationRecord.Create(
+                    chair.ObjectId,
+                    chair.Corners,
+                    translation,
+                    scale,
+                    rotationEuler,
+                    cameraPose,
+                    m_target,
+                    bounds,
+                    m_spawnReference);
+            }
 
             if (record == null)
             {
@@ -108,10 +133,42 @@ namespace QuestObjectron
 
             QuestObjectronLogger.Detect(
                 $"live_tune saved rotOffset={record.GetRotationOffsetDegrees():F1}° " +
-                $"scale={record.GetCalibratedMeshLocalScale()}");
+                $"scale={record.GetCalibratedMeshLocalScale()} upright={record.HasUprightPreset()}");
             ClearSelection();
             m_chairManager.RefreshScanMeshVisualsAfterCalibrationSave();
             return true;
+        }
+
+        public void TryResetSelectionToUprightBase()
+        {
+            if (!IsUprightMode || !HasSelection)
+            {
+                QuestObjectronLogger.Viz("upright reset skipped — enable upright preset and select a mesh (Right B)");
+                return;
+            }
+
+            if (!m_chairManager.TryGetLocalizedChairForPoolIndex(m_selectedPoolIndex, out var chair))
+            {
+                return;
+            }
+
+            if (!ObjectronScanCalibrationRecord.TryGetUprightSpawnPlacement(chair.Corners, out var upright))
+            {
+                return;
+            }
+
+            m_uprightBaseRotation = upright.Rotation;
+            m_target.SetPositionAndRotation(upright.Position, upright.Rotation);
+            m_target.localScale = Vector3.one;
+            m_spawnReference = new ObjectronScanCalibrationRecord.SpawnReference
+            {
+                Position = upright.Position,
+                Rotation = upright.Rotation,
+                LocalScale = Vector3.one,
+                IsValid = true,
+            };
+            ResetGrabState();
+            QuestObjectronLogger.Detect("upright reset — chair at world-up + box yaw; rotate with trigger, Left X save");
         }
 
         private void TrySelectOnRightB()
@@ -160,21 +217,42 @@ namespace QuestObjectron
                 return;
             }
 
-            var calibration = ObjectronScanCalibrationDefaults.Get();
-            Vector3? modelScale = null;
-            if (chair.Annotation?.Scale != null && chair.Annotation.Scale.Count >= 3)
+            ObjectronScanMeshPlacement baselinePlacement;
+            if (IsUprightMode)
             {
-                modelScale = new Vector3(chair.Annotation.Scale[0], chair.Annotation.Scale[1], chair.Annotation.Scale[2]);
-            }
+                if (!ObjectronScanCalibrationRecord.TryGetUprightSpawnPlacement(chair.Corners, out baselinePlacement))
+                {
+                    return;
+                }
 
-            if (calibration == null
-                || !calibration.TryApplyMeshPlacement(
-                    chair.Corners,
-                    modelScale,
-                    out var baselinePlacement,
-                    ObjectronScanCalibrationDefaults.IsFromDeviceSave))
+                m_uprightBaseRotation = baselinePlacement.Rotation;
+                meshTransform.SetPositionAndRotation(baselinePlacement.Position, baselinePlacement.Rotation);
+                meshTransform.localScale = Vector3.one;
+                ObjectronScanMeshUpright.ApplyUprightHintRotation(
+                    meshTransform,
+                    ObjectronScanMeshVisuals.ComputeMeshBoundsLocal(meshTransform));
+            }
+            else
             {
-                return;
+                var calibration = ObjectronScanCalibrationDefaults.Get();
+                Vector3? modelScale = null;
+                if (chair.Annotation?.Scale != null && chair.Annotation.Scale.Count >= 3)
+                {
+                    modelScale = new Vector3(
+                        chair.Annotation.Scale[0],
+                        chair.Annotation.Scale[1],
+                        chair.Annotation.Scale[2]);
+                }
+
+                if (calibration == null
+                    || !calibration.TryApplyMeshPlacement(
+                        chair.Corners,
+                        modelScale,
+                        out baselinePlacement,
+                        ObjectronScanCalibrationDefaults.IsFromDeviceSave))
+                {
+                    return;
+                }
             }
 
             m_selectedPoolIndex = poolIndex;
@@ -188,8 +266,18 @@ namespace QuestObjectron
                 IsValid = true,
             };
             ResetGrabState();
-            QuestObjectronLogger.Detect(
-                $"live_tune selected mesh #{poolIndex} id={chair.ObjectId} — grip/trigger/both-scale, Left X save");
+
+            if (IsUprightMode)
+            {
+                QuestObjectronLogger.Detect(
+                    $"upright_tune selected #{poolIndex} id={chair.ObjectId} — " +
+                    "Left Y reset upright, trigger rotate, Left X save preset");
+            }
+            else
+            {
+                QuestObjectronLogger.Detect(
+                    $"live_tune selected mesh #{poolIndex} id={chair.ObjectId} — grip/trigger/both-scale, Left X save");
+            }
         }
 
         public void ClearSelection()
@@ -197,6 +285,7 @@ namespace QuestObjectron
             m_selectedPoolIndex = -1;
             m_target = null;
             m_spawnReference = default;
+            m_uprightBaseRotation = Quaternion.identity;
             if (m_meshVisuals != null)
             {
                 m_meshVisuals.PinnedPoolIndex = -1;
@@ -225,6 +314,26 @@ namespace QuestObjectron
             var rightGrip = OVRInput.Get(OVRInput.Axis1D.PrimaryHandTrigger, OVRInput.Controller.RTouch) >= GripGrabThreshold;
             var rightTrigger = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, OVRInput.Controller.RTouch) >= TriggerGrabThreshold;
             var twoHandScale = leftGrip && rightGrip && leftController != null;
+
+            if (IsUprightMode)
+            {
+                if (rightTrigger)
+                {
+                    m_rotateGrabOffset ??= Quaternion.Inverse(rightController.rotation) * m_target.rotation;
+                    m_target.rotation = rightController.rotation * m_rotateGrabOffset.Value;
+                }
+                else
+                {
+                    m_rotateGrabOffset = null;
+                }
+
+                if (twoHandScale)
+                {
+                    ApplyTwoHandScale(leftController, rightController);
+                }
+
+                return;
+            }
 
             if (twoHandScale)
             {

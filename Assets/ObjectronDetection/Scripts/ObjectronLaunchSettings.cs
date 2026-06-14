@@ -17,6 +17,8 @@ namespace QuestObjectron
         public static bool ShowScanMeshOverlay { get; set; } = true;
         /// <summary>Allow selecting and tuning chair meshes during live detection (Right B select, Left X save).</summary>
         public static bool EnableLiveMeshTune { get; set; } = false;
+        /// <summary>Save world-upright chair orientation (ignores tilted detection box). Left Y reset upright, Left X save.</summary>
+        public static bool EnableUprightPresetMode { get; set; } = false;
 
         public static int ClampMaxObjects(int value) =>
             Mathf.Clamp(value, MinMaxObjects, MaxMaxObjects);

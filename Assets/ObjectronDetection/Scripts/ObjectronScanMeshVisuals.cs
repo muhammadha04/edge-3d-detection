@@ -99,8 +99,8 @@ namespace QuestObjectron
             }
 
             QuestObjectronLogger.Viz(
-                $"scan_mesh localized count={m_activeCount} scale=spawn(1.0) " +
-                $"applyUserCal={calibration.ShouldApplyUserCalibration()} pinned={m_pinnedPoolIndex}");
+                $"scan_mesh localized count={m_activeCount} upright=base+yaw " +
+                $"applyUpright={calibration.HasUprightPreset()} pinned={m_pinnedPoolIndex}");
         }
 
         public bool TryGetActiveTransform(int poolIndex, out Transform meshTransform)

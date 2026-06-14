@@ -78,6 +78,10 @@ namespace PassthroughCameraSamples.StartScene
                     {
                         label = "Scan Calibration (align mesh)";
                     }
+                    else if (label.Contains("Objectron2DDebug"))
+                    {
+                        label = "2D Model Debug (no 3D)";
+                    }
 
                     _ = uiBuilder.AddButton(label, () => LoadScene(scene.Item1), -1, DebugUIBuilder.DEBUG_PANE_LEFT);
                 }
@@ -174,6 +178,12 @@ namespace PassthroughCameraSamples.StartScene
                 "Live tune mesh (Right B / Left X)",
                 toggle => ObjectronLaunchSettings.EnableLiveMeshTune = toggle.isOn,
                 ObjectronLaunchSettings.EnableLiveMeshTune,
+                DebugUIBuilder.DEBUG_PANE_LEFT);
+
+            uiBuilder.AddToggle(
+                "Upright chair preset (Left Y reset / Left X save)",
+                toggle => ObjectronLaunchSettings.EnableUprightPresetMode = toggle.isOn,
+                ObjectronLaunchSettings.EnableUprightPresetMode,
                 DebugUIBuilder.DEBUG_PANE_LEFT);
         }
     }

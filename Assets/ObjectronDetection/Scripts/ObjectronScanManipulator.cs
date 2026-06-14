@@ -76,7 +76,7 @@ namespace QuestObjectron
 
         public bool TrySpawnAtDetectionBox(Vector3[] detectionCorners)
         {
-            if (HasSpawned || !ObjectronScanCalibrationRecord.TryGetSpawnPlacement(detectionCorners, out var placement))
+            if (HasSpawned || !ObjectronScanCalibrationRecord.TryGetUprightSpawnPlacement(detectionCorners, out var placement))
             {
                 return false;
             }

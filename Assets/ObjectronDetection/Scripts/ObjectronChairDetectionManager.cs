@@ -187,13 +187,22 @@ namespace QuestObjectron
                 if (now - m_lastResetButtonTime >= ResetButtonCooldownSec)
                 {
                     m_lastResetButtonTime = now;
-                    m_liveMeshTuner?.ClearSelection();
-                    ResetDetection();
+                    if (ObjectronLaunchSettings.EnableUprightPresetMode
+                        && m_liveMeshTuner != null
+                        && m_liveMeshTuner.HasSelection)
+                    {
+                        m_liveMeshTuner.TryResetSelectionToUprightBase();
+                    }
+                    else
+                    {
+                        m_liveMeshTuner?.ClearSelection();
+                        ResetDetection();
+                    }
                 }
             }
 
-            if (ObjectronLaunchSettings.EnableLiveMeshTune
-                && ObjectronLaunchSettings.ShowScanMeshOverlay
+            if (ObjectronLaunchSettings.ShowScanMeshOverlay
+                && (ObjectronLaunchSettings.EnableLiveMeshTune || ObjectronLaunchSettings.EnableUprightPresetMode)
                 && ObjectronQuestControllerButtons.LeftXPressed()
                 && m_cameraAccess != null)
             {
@@ -282,7 +291,8 @@ namespace QuestObjectron
                 $"launch_settings max_objects={MaxLocalizedChairs} " +
                 $"detect_conf={m_minDetectionConfidence:F2} track_conf={m_minTrackingConfidence:F2} " +
                 $"scan_mesh={ObjectronLaunchSettings.ShowScanMeshOverlay} " +
-                $"live_tune={ObjectronLaunchSettings.EnableLiveMeshTune}");
+                $"live_tune={ObjectronLaunchSettings.EnableLiveMeshTune} " +
+                $"upright_preset={ObjectronLaunchSettings.EnableUprightPresetMode}");
             QuestObjectronLogger.Boot($"placement_options: {m_placementOptions.Summary}");
         }
 

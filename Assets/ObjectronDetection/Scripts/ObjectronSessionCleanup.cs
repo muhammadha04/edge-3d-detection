@@ -43,6 +43,14 @@ namespace QuestObjectron
                 manager.ShutdownForSceneExit();
             }
 
+            var debug2dManagers = Object.FindObjectsByType<Objectron2DDebugManager>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            foreach (var manager in debug2dManagers)
+            {
+                manager.ShutdownForSceneExit();
+            }
+
             var questVisuals = Object.FindObjectsByType<ObjectronQuestVisuals>(
                 FindObjectsInactive.Include,
                 FindObjectsSortMode.None);

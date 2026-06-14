@@ -372,16 +372,23 @@ namespace QuestObjectron.Editor
             prop.intValue = value;
         }
 
-        private static void SetEnum(SerializedObject so, string propertyName, int enumValueIndex)
+        private static void SetEnum(SerializedObject so, string propertyName, int enumValueOrIndex)
         {
             var prop = so.FindProperty(propertyName);
-            if (prop == null)
+            if (prop == null || prop.propertyType != SerializedPropertyType.Enum)
             {
                 Debug.LogWarning($"QuestObjectron: missing serialized property '{propertyName}' on {so.targetObject.GetType().Name}");
                 return;
             }
 
-            prop.enumValueIndex = enumValueIndex;
+            if (enumValueOrIndex >= 0 && enumValueOrIndex < prop.enumDisplayNames.Length)
+            {
+                prop.enumValueIndex = enumValueOrIndex;
+            }
+            else
+            {
+                prop.intValue = enumValueOrIndex;
+            }
         }
 
         private static void WireManager(
@@ -430,7 +437,7 @@ namespace QuestObjectron.Editor
             if (imageSource != null)
             {
                 var imageSo = new SerializedObject(imageSource);
-                SetEnum(imageSo, "m_rotation", (int)RotationAngle.Rotation90);
+                SetEnum(imageSo, "m_rotation", (int)RotationAngle.Rotation0);
                 var flipProp = imageSo.FindProperty("m_horizontallyFlipped");
                 if (flipProp != null)
                 {
