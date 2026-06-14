@@ -11,6 +11,7 @@ namespace QuestObjectron
         {
             ObjectronQuestVisuals.DestroyPersistentWorldRoot();
             ObjectronLabeledBoxVisuals.DestroyPersistentWorldRoot();
+            ObjectronScanMeshVisuals.DestroyPersistentWorldRoot();
             ObjectronTablePlaneSnap.ClearAllSmoothedTableY();
             ObjectronFloorPlaneSnap.ClearAllSmoothedFloorY();
         }
@@ -54,6 +55,14 @@ namespace QuestObjectron
                 FindObjectsInactive.Include,
                 FindObjectsSortMode.None);
             foreach (var visuals in labeledVisuals)
+            {
+                visuals.ClearAllForSceneExit();
+            }
+
+            var scanMeshVisuals = Object.FindObjectsByType<ObjectronScanMeshVisuals>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            foreach (var visuals in scanMeshVisuals)
             {
                 visuals.ClearAllForSceneExit();
             }

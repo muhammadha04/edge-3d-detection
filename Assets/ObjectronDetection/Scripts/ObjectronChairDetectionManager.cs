@@ -30,6 +30,7 @@ namespace QuestObjectron
         [SerializeField] private OrientedBBoxDrawer m_bboxDrawer;
         [SerializeField] private ObjectronDetectionDebug m_detectionDebug;
         [SerializeField] private ObjectronQuestVisuals m_questVisuals;
+        [SerializeField] private ObjectronScanMeshVisuals m_scanMeshVisuals;
         [SerializeField] private ObjectronHeadsetHud m_headsetHud;
         [SerializeField] private ObjectronPassthroughOverlay m_passthroughOverlay;
         [SerializeField] private ObjectronEnvironmentDepthProvider m_environmentDepthProvider;
@@ -125,6 +126,12 @@ namespace QuestObjectron
                 }
             }
 
+            if (m_scanMeshVisuals == null)
+            {
+                m_scanMeshVisuals = GetComponent<ObjectronScanMeshVisuals>()
+                    ?? gameObject.AddComponent<ObjectronScanMeshVisuals>();
+            }
+
             if (m_headsetHud == null)
             {
                 m_headsetHud = GetComponent<ObjectronHeadsetHud>()
@@ -148,6 +155,7 @@ namespace QuestObjectron
 
             EnsurePlacementFixMenu();
             m_questVisuals.Prewarm();
+            m_scanMeshVisuals.Prewarm();
             m_bboxDrawer?.Prewarm();
             m_detectionDebug?.Prewarm();
         }
@@ -181,6 +189,7 @@ namespace QuestObjectron
             m_lastWorldBoxes = null;
             m_lastLoggedLocalizedCount = -1;
             m_questVisuals?.ClearLocalization(silent: true);
+            m_scanMeshVisuals?.Localize(null);
             m_detectionDebug?.Clear();
             m_bboxDrawer?.SetDetections(null);
         }
@@ -756,6 +765,7 @@ namespace QuestObjectron
             m_lastWorldBoxes = BuildLocalizedWorldBoxes();
             m_bboxDrawer?.SetDetections(null);
             m_questVisuals?.Localize(m_lastWorldBoxes);
+            m_scanMeshVisuals?.Localize(m_lastWorldBoxes);
 
             if (m_lastWorldBoxes.Count > 0 && m_localizedChairs.Count > 0)
             {

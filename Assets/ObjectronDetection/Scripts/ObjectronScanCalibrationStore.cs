@@ -20,6 +20,7 @@ namespace QuestObjectron
 
             var json = record.ToDebugString();
             File.WriteAllText(FilePath, json);
+            ObjectronScanCalibrationDefaults.ClearCache();
             QuestObjectronLogger.Detect($"scan_calibration saved path={FilePath}");
             QuestObjectronLogger.Dbg($"SCAN_CALIBRATION_JSON_BEGIN\n{json}\nSCAN_CALIBRATION_JSON_END");
             return true;

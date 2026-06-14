@@ -5,6 +5,14 @@ using UnityEngine;
 
 namespace QuestObjectron
 {
+    public struct ObjectronScanMeshPlacement
+    {
+        public Vector3 Position;
+        public Quaternion Rotation;
+        public Vector3 LocalScale;
+        public bool IsValid;
+    }
+
     [Serializable]
     public class ObjectronScanCalibrationRecord
     {
@@ -107,28 +115,51 @@ namespace QuestObjectron
 
         public Pose ApplyToDetection(Vector3[] detectionCorners)
         {
-            if (detectionCorners == null || detectionCorners.Length < 9)
+            return TryApplyMeshPlacement(detectionCorners, out var placement)
+                ? new Pose(placement.Position, placement.Rotation)
+                : default;
+        }
+
+        public bool TryApplyMeshPlacement(Vector3[] detectionCorners, out ObjectronScanMeshPlacement placement)
+        {
+            placement = default;
+            if (!HasRelativeTransform() || detectionCorners == null || detectionCorners.Length < 9)
             {
-                return default;
+                return false;
             }
 
             if (!ObjectronOrientedBoxFitter.TryFitTransform(
                     detectionCorners,
                     out var center,
                     out var rotation,
-                    out _))
+                    out var detectionSize))
             {
                 center = detectionCorners[0];
                 rotation = Quaternion.identity;
+                detectionSize = Vector3.one;
             }
 
             var detectionPose = new Pose(center, rotation);
             var relativePos = ToVec3(scanToDetectionPosition);
             var relativeRot = ToQuat(scanToDetectionRotationQuat);
-            var worldPos = detectionPose.position + detectionPose.rotation * relativePos;
-            var worldRot = detectionPose.rotation * relativeRot;
-            return new Pose(worldPos, worldRot);
+            var scaleRatio = ToVec3(scanToDetectionScaleRatio);
+            placement = new ObjectronScanMeshPlacement
+            {
+                Position = detectionPose.position + detectionPose.rotation * relativePos,
+                Rotation = detectionPose.rotation * relativeRot,
+                LocalScale = Vector3.Scale(detectionSize, scaleRatio),
+                IsValid = true,
+            };
+            return true;
         }
+
+        public bool HasRelativeTransform() =>
+            scanToDetectionPosition != null
+            && scanToDetectionPosition.Length >= 3
+            && scanToDetectionRotationQuat != null
+            && scanToDetectionRotationQuat.Length >= 4
+            && scanToDetectionScaleRatio != null
+            && scanToDetectionScaleRatio.Length >= 3;
 
         public string ToDebugString()
         {

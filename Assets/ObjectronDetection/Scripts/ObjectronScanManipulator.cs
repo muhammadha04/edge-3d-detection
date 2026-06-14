@@ -71,6 +71,52 @@ namespace QuestObjectron
             m_isFrozen = false;
         }
 
+        public bool TrySpawnAtCalibratedBox(Vector3[] detectionCorners)
+        {
+            if (HasSpawned)
+            {
+                QuestObjectronLogger.Viz("scan_calibration spawn skipped — scan already spawned");
+                return false;
+            }
+
+            var calibration = ObjectronScanCalibrationDefaults.Get();
+            if (calibration == null || !calibration.TryApplyMeshPlacement(detectionCorners, out var placement))
+            {
+                QuestObjectronLogger.Err("scan_calibration spawn failed — no default calibration for detection box");
+                return false;
+            }
+
+            return TrySpawnAtPlacement(placement);
+        }
+
+        private bool TrySpawnAtPlacement(ObjectronScanMeshPlacement placement)
+        {
+            if (HasSpawned || !placement.IsValid)
+            {
+                return false;
+            }
+
+            var prefab = ResolvePrefab();
+            if (prefab == null)
+            {
+                QuestObjectronLogger.Err("scan_calibration spawn failed — lab-chair prefab missing");
+                return false;
+            }
+
+            var instance = Instantiate(prefab, placement.Position, placement.Rotation);
+            instance.name = "ScanCalibration_Chair";
+            instance.transform.localScale = placement.LocalScale;
+            EnsureVisibleMaterials(instance);
+            m_scanRoot = instance.transform;
+            m_meshBoundsLocal = ComputeMeshBoundsLocal(instance);
+            m_isFrozen = false;
+            ResetGrabState();
+            QuestObjectronLogger.Viz(
+                $"scan_calibration spawned calibrated pos=({placement.Position.x:F2},{placement.Position.y:F2},{placement.Position.z:F2}) " +
+                $"scale=({placement.LocalScale.x:F2},{placement.LocalScale.y:F2},{placement.LocalScale.z:F2})");
+            return true;
+        }
+
         public bool TrySpawnAtControllerAim()
         {
             if (HasSpawned)
@@ -268,7 +314,7 @@ namespace QuestObjectron
             }
         }
 
-        private static void EnsureVisibleMaterials(GameObject instance)
+        public static void EnsureVisibleMaterials(GameObject instance)
         {
             var shader = Shader.Find("Universal Render Pipeline/Lit")
                 ?? Shader.Find("Unlit/Color")

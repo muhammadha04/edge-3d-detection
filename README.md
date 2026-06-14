@@ -380,13 +380,18 @@ Rounded (`MODEL_SCALED_CAM_PLANE`): `(2.14, 1.72, 1.93)`
 
 ### How to use for every detection
 
-1. **Preferred:** Run **Scan Calibration** scene, align `lab-chair.obj`, press **X** — use `scanToDetection*` fields from saved JSON.
-2. **Quick test from this snapshot:** Fit an oriented box to detection corners, then:
-   - Per-axis: scale mesh using `(2.14, 1.72, 1.93)` relative to raw Objectron model size.
-   - Uniform: multiply mesh scale by **1.929**.
-   - Rotation offset: `Quaternion.Euler(312, 327, 288)` relative to detection box rotation (tune visually).
+1. **Bundled defaults:** `Assets/Resources/ScanCalibration/default_chair_calibration.json` (from your Scan Calibration save). Loaded automatically at runtime.
+2. **Device override:** If you save again on Quest (`Left X`), the file on device overrides bundled defaults until reinstall.
+3. **Chair Detection:** Each localized chair gets a `lab-chair` mesh via `ObjectronScanMeshVisuals` using `scanToDetection*` relative transform (position, rotation, scale).
+4. **Scan Calibration spawn:** Right trigger uses calibrated placement on the latched box first (then controller-aim fallback).
 
-Depth/model width x height from log: **2.211 x 2.789 m** (frustum space; use final world edges above for room-scale box).
+Apply math (`ObjectronScanCalibrationRecord.TryApplyMeshPlacement`):
+
+- `worldRotation = detectionBoxRotation * scanToDetectionRotation`
+- `worldPosition = detectionBoxCenter + detectionBoxRotation * scanToDetectionPosition`
+- `localScale = detectionBoxSize * scanToDetectionScaleRatio` (per axis)
+
+Default rotation quat from 2026-06-14 save: `(0.172, 0.910, 0.378, 0.014)` relative to each detection box.
 
 ---
 

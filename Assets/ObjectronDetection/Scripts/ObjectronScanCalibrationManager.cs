@@ -237,7 +237,8 @@ namespace QuestObjectron
                 return;
             }
 
-            if (m_scanManipulator.TrySpawnAtControllerAim())
+            if (m_scanManipulator.TrySpawnAtCalibratedBox(m_lastCorners)
+                || m_scanManipulator.TrySpawnAtControllerAim())
             {
                 m_state = ScanCalibrationState.ScanSpawned;
             }
