@@ -237,10 +237,15 @@ namespace QuestObjectron
                 return;
             }
 
-            if (m_scanManipulator.TrySpawnAtCalibratedBox(m_lastCorners, m_lastScale)
+            if (m_scanManipulator.TrySpawnAtDetectionBox(m_lastCorners)
                 || m_scanManipulator.TrySpawnAtControllerAim())
             {
                 m_state = ScanCalibrationState.ScanSpawned;
+            }
+            else
+            {
+                QuestObjectronLogger.Err(
+                    "scan_calibration spawn failed — check LabChair in Resources/ScanCalibration and logcat");
             }
         }
 

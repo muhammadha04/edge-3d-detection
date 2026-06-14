@@ -61,7 +61,7 @@ namespace QuestObjectron
                 ScanCalibrationState.Ready => m_manager.HasLatchedCorners
                     ? $"Chair latched ({m_manager.LiveDetectionCount}) — press B to show box"
                     : "Point at chair — wait for live detect, then press B",
-                ScanCalibrationState.BoxShown => "Box shown — trigger tap to spawn scan",
+                ScanCalibrationState.BoxShown => "Box shown — trigger tap to spawn scan at box center",
                 ScanCalibrationState.ScanSpawned =>
                     "Grip=move | Trigger=rotate | Both grips=scale | Left Y=freeze | Left X=save",
                 ScanCalibrationState.ScanFrozen => "Frozen — Left X to save calibration",

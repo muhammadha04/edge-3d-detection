@@ -71,6 +71,27 @@ namespace QuestObjectron
             m_isFrozen = false;
         }
 
+        public bool TrySpawnAtDetectionBox(Vector3[] detectionCorners)
+        {
+            if (HasSpawned || detectionCorners == null || detectionCorners.Length < 9)
+            {
+                return false;
+            }
+
+            var center = detectionCorners[0];
+            var rotation = Quaternion.identity;
+            ObjectronOrientedBoxFitter.TryFitTransform(detectionCorners, out _, out rotation, out _);
+
+            return TrySpawnAtPlacement(new ObjectronScanMeshPlacement
+            {
+                Position = center,
+                Rotation = rotation,
+                LocalScale = Vector3.one,
+                IsValid = true,
+            });
+        }
+
+        /// <summary>Automatic overlay placement using saved calibration (chair detection only).</summary>
         public bool TrySpawnAtCalibratedBox(Vector3[] detectionCorners, Vector3? modelScale = null)
         {
             if (HasSpawned)
