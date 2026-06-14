@@ -27,15 +27,15 @@ namespace QuestObjectron
         private Bounds m_meshBoundsLocal = new(Vector3.zero, Vector3.one);
         private OVRCameraRig m_cameraRig;
 
-        private bool m_moveGrabActive;
-        private Vector3 m_moveGrabOffset;
-        private bool m_rotateGrabActive;
-        private Quaternion m_rotateGrabOffset;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private Vector3? m_moveGrabOffset;
+        private Quaternion? m_rotateGrabOffset;
         private bool m_twoHandScaleActive;
         private float m_twoHandStartDistance;
         private Vector3 m_twoHandStartScale;
         private Vector3 m_twoHandStartPosition;
         private Vector3 m_twoHandStartMidpoint;
+#endif
 
         public bool HasSpawned => m_scanRoot != null;
         public bool IsFrozen => m_isFrozen;
@@ -131,8 +131,8 @@ namespace QuestObjectron
             if (twoHandScale)
             {
                 ApplyTwoHandScale(leftController, rightController);
-                m_moveGrabActive = false;
-                m_rotateGrabActive = false;
+                m_moveGrabOffset = null;
+                m_rotateGrabOffset = null;
                 return;
             }
 
@@ -140,32 +140,30 @@ namespace QuestObjectron
 
             if (rightGrip)
             {
-                if (!m_moveGrabActive)
+                if (!m_moveGrabOffset.HasValue)
                 {
-                    m_moveGrabActive = true;
                     m_moveGrabOffset = m_scanRoot.position - rightController.position;
                 }
 
-                m_scanRoot.position = rightController.position + m_moveGrabOffset;
+                m_scanRoot.position = rightController.position + m_moveGrabOffset.Value;
             }
             else
             {
-                m_moveGrabActive = false;
+                m_moveGrabOffset = null;
             }
 
             if (rightTrigger)
             {
-                if (!m_rotateGrabActive)
+                if (!m_rotateGrabOffset.HasValue)
                 {
-                    m_rotateGrabActive = true;
                     m_rotateGrabOffset = Quaternion.Inverse(rightController.rotation) * m_scanRoot.rotation;
                 }
 
-                m_scanRoot.rotation = rightController.rotation * m_rotateGrabOffset;
+                m_scanRoot.rotation = rightController.rotation * m_rotateGrabOffset.Value;
             }
             else
             {
-                m_rotateGrabActive = false;
+                m_rotateGrabOffset = null;
             }
 #endif
         }
@@ -188,6 +186,7 @@ namespace QuestObjectron
 
         public Bounds MeshBoundsLocal => m_meshBoundsLocal;
 
+#if UNITY_ANDROID && !UNITY_EDITOR
         private void ApplyTwoHandScale(Transform leftController, Transform rightController)
         {
             var leftPos = leftController.position;
@@ -213,12 +212,15 @@ namespace QuestObjectron
             m_scanRoot.localScale = m_twoHandStartScale * scaleFactor;
             m_scanRoot.position = m_twoHandStartPosition + (midpoint - m_twoHandStartMidpoint);
         }
+#endif
 
         private void ResetGrabState()
         {
-            m_moveGrabActive = false;
-            m_rotateGrabActive = false;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            m_moveGrabOffset = null;
+            m_rotateGrabOffset = null;
             m_twoHandScaleActive = false;
+#endif
         }
 
         private GameObject ResolvePrefab()

@@ -62,8 +62,10 @@ namespace QuestObjectron
         [NonSerialized] private List<ObjectronLocalizedChairState> m_localizedChairs = new();
         private int m_lastLoggedLocalizedCount = -1;
         private bool m_shutdownForSceneExit;
+#if UNITY_ANDROID && !UNITY_EDITOR
         private float m_lastResetButtonTime = -999f;
         private const float ResetButtonCooldownSec = 1f;
+#endif
 
         public int LocalizedChairCount => m_localizedChairs.Count;
         public bool Scanning => m_localizedChairs.Count < MaxLocalizedChairs;
