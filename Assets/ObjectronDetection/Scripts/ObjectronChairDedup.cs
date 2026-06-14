@@ -7,8 +7,8 @@ namespace QuestObjectron
 {
     public static class ObjectronChairDedup
     {
-        private const float CenterMatchRadiusM = 0.55f;
-        private const float CenterOverlapRadiusM = 0.38f;
+        private const float CenterOverlapRadiusM = 0.45f;
+        private const float CenterMatchRadiusM = 0.65f;
         private const float MinContainedCornerDistanceM = 0.12f;
 
         public static bool AreSameChair(
@@ -45,7 +45,7 @@ namespace QuestObjectron
             return false;
         }
 
-        public static int FindDuplicateIndex(
+        internal static int FindDuplicateIndex(
             IReadOnlyList<ObjectronLocalizedChairState> localizedChairs,
             int objectId,
             Vector3[] candidateCorners)

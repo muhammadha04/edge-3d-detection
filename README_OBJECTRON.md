@@ -2,7 +2,9 @@
 
 Unity 6 project for **Meta Quest 3** that runs **native MediaPipe Objectron** (Chair model) on **Passthrough Camera API** frames and draws **world-space 3D wireframe boxes** over detected chairs. Inference uses **homuler MediaPipeUnityPlugin** (not Unity Inference Engine / Sentis).
 
-> **Branch `chair`:** This branch detects chairs instead of cups. Use `main` for cup/mug detection.
+> **Branch `twostage`:** Strict MediaPipe two-stage pipeline placement — see **[README_TWOSTAGE.md](README_TWOSTAGE.md)**.
+>
+> **Branch `chair`:** Chair model with depth/mask placement heuristics. Use `main` for cup/mug detection.
 
 For the full technical pipeline (placement math, parameters, chair rules, session cleanup), see **[README.md](README.md)**.
 

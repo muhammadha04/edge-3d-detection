@@ -23,6 +23,10 @@ namespace QuestObjectron
         TableSnappedBox,
         /// <summary>Box bottom snapped to Meta Scene API floor surface.</summary>
         FloorSnappedBox,
+        /// <summary>MediaPipe rotation * scale * unit_box + translation (two-stage stage-2 pose).</summary>
+        TwoStageCanonical,
+        /// <summary>MediaPipe lifted 3D keypoints from EPnP (two-stage stage-2 output).</summary>
+        TwoStageLifted3D,
     }
 
     public readonly struct PlacementOutput
@@ -224,6 +228,17 @@ namespace QuestObjectron
             }
 
             return results;
+        }
+
+        /// <summary>Full depth-refined placement for one annotation (includes floor snap when enabled).</summary>
+        public PlacementOutput PlaceOneDetailed(ObjectAnnotation annotation, Pose cameraPose)
+        {
+            var temp = new FrameAnnotation();
+            temp.Annotations.Add(annotation);
+            var results = PlaceDetailed(temp, cameraPose, null);
+            return results.Count > 0
+                ? results[0]
+                : new PlacementOutput(-1, null, PlacementMethod.None, null);
         }
 
         private PlacementOutput PlaceOne(

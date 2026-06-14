@@ -1,9 +1,9 @@
-// Main pipeline: PCA camera -> MediaPipe Objectron (Chair) -> world-space bounding boxes.
+// Two-stage pipeline: PCA -> ObjectronGpuSubgraph (SSD stage-1 + BoxLandmark/EPnP stage-2) -> world boxes.
+// Placement follows MediaPipe objectron.md coordinate systems (twostage branch).
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Mediapipe;
 using Mediapipe.Unity;
 using Mediapipe.Unity.Objectron;
@@ -15,9 +15,17 @@ namespace QuestObjectron
 {
     public class ObjectronChairDetectionManager : MonoBehaviour
     {
-        private const int InferenceEveryNFrames = 2;
-        /// <summary>Min interval between main-thread detection process + ok logs (stops objectId 1–21 spam).</summary>
-        private const float DetectionProcessMinInterval = 0.2f;
+        private const int BaseInferenceEveryNFrames = 2;
+        private const int MidInferenceEveryNFrames = 3;
+        private const int FullScanInferenceEveryNFrames = 6;
+        private const int MidLocalizedThreshold = 2;
+        private const float RefineCooldownSec = 0.75f;
+        private const float RefineMotionBypassM = 0.15f;
+        private const float NewLocalizeCooldownSec = 2f;
+        private const int RequiredStableLatchFrames = 5;
+        private const float LatchStabilityRadiusM = 0.15f;
+        /// <summary>Min interval between main-thread detection process (box-debug style latch).</summary>
+        private const float DetectionProcessMinInterval = 0.1f;
         private int MaxLocalizedChairs => ObjectronLaunchSettings.ClampMaxObjects(ObjectronLaunchSettings.MaxObjects);
 
         [Header("Meta / MediaPipe")]
@@ -37,15 +45,20 @@ namespace QuestObjectron
         [Header("Tuning")]
         [SerializeField] private ObjectronPlacementOptions m_placementOptions = new();
         [SerializeField] private RunningMode m_runningMode = RunningMode.Async;
-        [SerializeField] private float m_minDetectionConfidence = 0.35f;
+        [SerializeField] private float m_minDetectionConfidence = 0.5f;
         [SerializeField] private float m_minTrackingConfidence = 0.55f;
 
         private readonly object m_pendingLock = new();
         private readonly ObjectronFramePoseQueue m_framePoses = new();
         private FrameAnnotation m_pendingFrame;
+        private List<NormalizedRect> m_pendingStageOneRects;
+        private List<NormalizedRect> m_lastStageOneRects;
         private bool m_hasPendingFrame;
 
+        /// <summary>Primary world placement (same path as box debug — depth-refined stage-2 output).</summary>
         private ObjectronWorldPlacement m_worldPlacement;
+        /// <summary>Raw MediaPipe pose only — used for pipeline diagnostics vs world placement.</summary>
+        private ObjectronTwoStagePlacement m_rawStage2Placement;
 
         public ObjectronPlacementOptions PlacementOptions => m_placementOptions;
         private Coroutine m_pipeline;
@@ -62,8 +75,14 @@ namespace QuestObjectron
         [NonSerialized] private List<ObjectronLocalizedChairState> m_localizedChairs = new();
         private int m_lastLoggedLocalizedCount = -1;
         private bool m_shutdownForSceneExit;
+        private float m_lastNewLocalizeTime = -999f;
+        private Vector3? m_latchCenter;
+        private int m_latchStableFrames;
+        private int m_liveLatchCount;
+#if UNITY_ANDROID && !UNITY_EDITOR
         private float m_lastResetButtonTime = -999f;
         private const float ResetButtonCooldownSec = 1f;
+#endif
 
         public int LocalizedChairCount => m_localizedChairs.Count;
         public bool Scanning => m_localizedChairs.Count < MaxLocalizedChairs;
@@ -178,6 +197,9 @@ namespace QuestObjectron
             m_localizedChairs.Clear();
             m_lastWorldBoxes = null;
             m_lastLoggedLocalizedCount = -1;
+            m_latchCenter = null;
+            m_latchStableFrames = 0;
+            m_lastNewLocalizeTime = -999f;
             m_questVisuals?.ClearLocalization(silent: true);
             m_detectionDebug?.Clear();
             m_bboxDrawer?.SetDetections(null);
@@ -187,6 +209,7 @@ namespace QuestObjectron
         public void ResetDetection()
         {
             ClearLocalizedStateSilent();
+            ApplyAdaptiveGraphCap();
             QuestObjectronLogger.Detect($"chair_scan_reset — point at chairs to localize (max {MaxLocalizedChairs})");
         }
 
@@ -218,16 +241,21 @@ namespace QuestObjectron
                 m_placementOptions = new ObjectronPlacementOptions();
             }
 
-            m_placementOptions.CompensateHeadRoll = true;
-            m_placementOptions.ConstrainUprightOnTable = true;
-            m_placementOptions.EnableFloorSnap = true;
-            m_placementOptions.DisableMaskAlignedFallback = true;
+            ApplyTwoStagePlacementDefaultsToOptions();
             SyncPlacementOptionsFromImageSource();
             ObjectronPlacementFixSettings.Active = m_placementOptions;
             m_worldPlacement = new ObjectronWorldPlacement(
                 m_cameraAccess,
                 m_environmentRaycast,
                 m_placementOptions);
+            var rawOptions = ClonePlacementOptions(m_placementOptions);
+            rawOptions.EnableFloorSnap = false;
+            rawOptions.ConstrainUprightOnTable = false;
+            m_rawStage2Placement = new ObjectronTwoStagePlacement(
+                m_cameraAccess,
+                m_environmentRaycast,
+                rawOptions,
+                smoothing: 0f);
 
             if (m_imageSource == null)
             {
@@ -247,9 +275,40 @@ namespace QuestObjectron
             ApplyGraphTuning();
             EnsureDebug();
             QuestObjectronLogger.Boot(
-                $"launch_settings max_objects={MaxLocalizedChairs} " +
+                $"twostage pipeline=ObjectronGpuSubgraph (SSD+BoxLandmark+EPnP) max_objects={MaxLocalizedChairs} " +
                 $"detect_conf={m_minDetectionConfidence:F2} track_conf={m_minTrackingConfidence:F2}");
             QuestObjectronLogger.Boot($"placement_options: {m_placementOptions.Summary}");
+        }
+
+        private void ApplyTwoStagePlacementDefaultsToOptions()
+        {
+            // Match box-debug: depth-refined stage-2 latch; floor snap only on pin (see TryLocalizeNewChair).
+            m_placementOptions.UseUnityCameraFrame = true;
+            m_placementOptions.Mirror3DLocalXWhenFlipped = false;
+            m_placementOptions.UseMaskWhenBadOrientation = true;
+            m_placementOptions.AutoPickLegacyRotationFrame = false;
+            m_placementOptions.EnableTableSnap = false;
+            m_placementOptions.DisableMaskAlignedFallback = false;
+            m_placementOptions.CompensateHeadRoll = true;
+            m_placementOptions.ConstrainUprightOnTable = false;
+            m_placementOptions.EnableFloorSnap = false;
+        }
+
+        private static ObjectronPlacementOptions ClonePlacementOptions(ObjectronPlacementOptions source)
+        {
+            return new ObjectronPlacementOptions
+            {
+                MirrorInferenceHorizontal = source.MirrorInferenceHorizontal,
+                UseUnityCameraFrame = source.UseUnityCameraFrame,
+                Mirror3DLocalXWhenFlipped = source.Mirror3DLocalXWhenFlipped,
+                UseMaskWhenBadOrientation = source.UseMaskWhenBadOrientation,
+                AutoPickLegacyRotationFrame = source.AutoPickLegacyRotationFrame,
+                EnableTableSnap = source.EnableTableSnap,
+                CompensateHeadRoll = source.CompensateHeadRoll,
+                ConstrainUprightOnTable = source.ConstrainUprightOnTable,
+                EnableFloorSnap = source.EnableFloorSnap,
+                DisableMaskAlignedFallback = source.DisableMaskAlignedFallback,
+            };
         }
 
         private void SyncPlacementOptionsFromImageSource()
@@ -260,16 +319,15 @@ namespace QuestObjectron
             }
 
             m_placementOptions.MirrorInferenceHorizontal = m_imageSource.isHorizontallyFlipped;
-            if (m_worldPlacement != null)
-            {
-                m_worldPlacement.SetMirrorHorizontal(m_placementOptions.MirrorInferenceHorizontal);
-            }
+            m_worldPlacement?.SetMirrorHorizontal(m_placementOptions.MirrorInferenceHorizontal);
+            m_rawStage2Placement?.SetMirrorHorizontal(m_placementOptions.MirrorInferenceHorizontal);
         }
 
         private void ApplyLaunchSettings()
         {
             m_minDetectionConfidence = ObjectronLaunchSettings.MinDetectionConfidence;
             m_minTrackingConfidence = ObjectronLaunchSettings.MinTrackingConfidence;
+            ObjectronLaunchSettings.ApplyToGraph(m_objectronGraph);
         }
 
         private void ApplyGraphTuning()
@@ -280,7 +338,36 @@ namespace QuestObjectron
             }
 
             m_objectronGraph.category = ObjectronGraph.Category.Chair;
-            ObjectronLaunchSettings.ApplyToGraph(m_objectronGraph);
+            ApplyAdaptiveGraphCap();
+            m_objectronGraph.minDetectionConfidence = m_minDetectionConfidence;
+            m_objectronGraph.minTrackingConfidence = m_minTrackingConfidence;
+        }
+
+        private void ApplyAdaptiveGraphCap()
+        {
+            if (m_objectronGraph == null)
+            {
+                return;
+            }
+
+            var unlocalized = Mathf.Max(0, MaxLocalizedChairs - m_localizedChairs.Count);
+            var cap = Scanning ? Mathf.Max(1, unlocalized + 1) : 1;
+            m_objectronGraph.maxNumObjects = Mathf.Min(cap, MaxLocalizedChairs);
+        }
+
+        private int GetInferenceEveryNFrames()
+        {
+            if (!Scanning)
+            {
+                return FullScanInferenceEveryNFrames;
+            }
+
+            if (m_localizedChairs.Count >= MidLocalizedThreshold)
+            {
+                return MidInferenceEveryNFrames;
+            }
+
+            return BaseInferenceEveryNFrames;
         }
 
         private IEnumerator Start()
@@ -319,12 +406,14 @@ namespace QuestObjectron
             if (m_objectronGraph != null && m_runningMode == RunningMode.Async)
             {
                 m_objectronGraph.OnLiftedObjectsOutput -= OnLiftedObjectsAsync;
+                m_objectronGraph.OnMultiBoxRectsOutput -= OnMultiBoxRectsAsync;
             }
 
             lock (m_pendingLock)
             {
                 m_hasPendingFrame = false;
                 m_pendingFrame = null;
+                m_pendingStageOneRects = null;
             }
 
             m_framePoses.Clear();
@@ -443,11 +532,13 @@ namespace QuestObjectron
             if (m_runningMode == RunningMode.Async)
             {
                 m_objectronGraph.OnLiftedObjectsOutput += OnLiftedObjectsAsync;
+                m_objectronGraph.OnMultiBoxRectsOutput += OnMultiBoxRectsAsync;
             }
 
             m_objectronGraph.StartRun(m_imageSource);
             m_graphReady = true;
-            QuestObjectronLogger.Detect("graph_started model=Chair");
+            QuestObjectronLogger.Detect(
+                "twostage_graph_started model=Chair — tiered: cheap track (candidates) + heavy localize/refine only");
 
             var waitEndOfFrame = new WaitForEndOfFrame();
 
@@ -459,14 +550,8 @@ namespace QuestObjectron
                     continue;
                 }
 
-                if (!IsHeadPoseReliable())
-                {
-                    yield return waitEndOfFrame;
-                    continue;
-                }
-
                 m_frameId++;
-                if (m_frameId % InferenceEveryNFrames != 0)
+                if (m_frameId % GetInferenceEveryNFrames() != 0)
                 {
                     yield return waitEndOfFrame;
                     continue;
@@ -493,15 +578,16 @@ namespace QuestObjectron
                     case RunningMode.NonBlockingSync:
                     {
                         FrameAnnotation lifted = null;
+                        List<NormalizedRect> rects = null;
                         yield return new WaitUntil(() =>
-                            m_objectronGraph.TryGetNext(out lifted, out _, out _, false));
-                        ProcessDetections(lifted, cameraPose, t0);
+                            m_objectronGraph.TryGetNext(out lifted, out rects, out _, false));
+                        ProcessDetections(lifted, cameraPose, rects, t0);
                         break;
                     }
                     case RunningMode.Sync:
-                        if (m_objectronGraph.TryGetNext(out var liftedSync, out _, out _, true))
+                        if (m_objectronGraph.TryGetNext(out var liftedSync, out var rectsSync, out _, true))
                         {
-                            ProcessDetections(liftedSync, cameraPose, t0);
+                            ProcessDetections(liftedSync, cameraPose, rectsSync, t0);
                         }
                         else
                         {
@@ -530,7 +616,22 @@ namespace QuestObjectron
             lock (m_pendingLock)
             {
                 m_pendingFrame = e.value;
+                m_pendingStageOneRects = m_lastStageOneRects;
                 m_hasPendingFrame = true;
+            }
+        }
+
+        /// <summary>Stage-1 SSD crop rects (multi_box_rects stream).</summary>
+        private void OnMultiBoxRectsAsync(object sender, OutputEventArgs<List<NormalizedRect>> e)
+        {
+            if (!m_graphReady)
+            {
+                return;
+            }
+
+            lock (m_pendingLock)
+            {
+                m_lastStageOneRects = e.value;
             }
         }
 
@@ -542,6 +643,7 @@ namespace QuestObjectron
             }
 
             FrameAnnotation frame;
+            List<NormalizedRect> stageOneRects;
             lock (m_pendingLock)
             {
                 if (!m_hasPendingFrame)
@@ -556,47 +658,286 @@ namespace QuestObjectron
                 }
 
                 frame = m_pendingFrame;
+                stageOneRects = m_pendingStageOneRects;
                 m_hasPendingFrame = false;
                 m_lastDetectionProcessTime = now;
             }
 
             var cameraPose = m_framePoses.DequeueOrCurrent(() => m_cameraAccess.GetCameraPose());
-            if (m_worldPlacement != null && m_imageSource != null)
-            {
-                m_worldPlacement.SetMirrorHorizontal(m_imageSource.isHorizontallyFlipped);
-            }
-
-            ProcessDetections(frame, cameraPose, m_lastDetectionProcessTime);
+            SyncPlacementOptionsFromImageSource();
+            ProcessDetections(frame, cameraPose, stageOneRects, m_lastDetectionProcessTime);
         }
 
-        private void ProcessDetections(FrameAnnotation lifted, Pose cameraPose, float startTime)
+        private void ProcessDetections(
+            FrameAnnotation lifted,
+            Pose cameraPose,
+            List<NormalizedRect> stageOneRects,
+            float startTime)
         {
-            if (lifted == null || lifted.Annotations == null || lifted.Annotations.Count == 0)
+            if (lifted?.Annotations == null || lifted.Annotations.Count == 0)
             {
+                ResetLatchStability();
                 ProcessEmptyDetections();
                 return;
             }
 
             m_emptyLogCount = 0;
+            m_liveLatchCount++;
 
             var count = lifted.Annotations.Count;
+            var stageOneCount = stageOneRects?.Count ?? 0;
             var ms = (Time.realtimeSinceStartup - startTime) * 1000f;
+            ObjectronPipelineDiagnostics.LogStageSummary(lifted, stageOneCount, ms);
+
             if (count != m_lastLoggedOkCount)
             {
                 m_lastLoggedOkCount = count;
-                QuestObjectronLogger.Detect($"ok count={count} ms={ms:F0}");
             }
 
+            // Box-debug style: one world-placement pass per frame (not per-annotation localize spam).
             var placementOutputs = m_worldPlacement.PlaceDetailed(lifted, cameraPose, null);
-            ProcessChairPlacements(lifted, placementOutputs);
+            var changed = false;
+            var liveCandidates = new List<Vector3[]>();
+            PlacementOutput bestNewCandidate = default;
+            ObjectAnnotation bestNewAnnotation = null;
+            var bestNewQuality = float.MaxValue;
+
+            foreach (var output in placementOutputs)
+            {
+                if (output.Corners == null || output.Method == PlacementMethod.None)
+                {
+                    continue;
+                }
+
+                if (!ObjectronBoxValidation.TryGetExtentMeters(output.Corners, out _))
+                {
+                    continue;
+                }
+
+                var annotation = FindAnnotation(lifted, output.ObjectId);
+                var localizedIndex = ObjectronChairDedup.FindDuplicateIndex(
+                    m_localizedChairs, output.ObjectId, output.Corners);
+
+                if (localizedIndex >= 0)
+                {
+                    if (TryRefineLocalizedChair(localizedIndex, annotation, output))
+                    {
+                        changed = true;
+                    }
+
+                    continue;
+                }
+
+                if (!Scanning)
+                {
+                    continue;
+                }
+
+                liveCandidates.Add(output.Corners);
+
+                if (!ObjectronDetectionQuality.TryEvaluate(output, 0f, 0f, out var quality))
+                {
+                    continue;
+                }
+
+                if (quality.Score < bestNewQuality)
+                {
+                    bestNewQuality = quality.Score;
+                    bestNewCandidate = output;
+                    bestNewAnnotation = annotation;
+                }
+            }
+
+            if (ObjectronPipelineDiagnostics.Enabled && bestNewAnnotation != null)
+            {
+                var rawTrack = m_rawStage2Placement.PlaceOneTrack(
+                    bestNewAnnotation, cameraPose,
+                    stageOneRects != null && lifted.Annotations.Count > 0 ? stageOneRects[0] : null);
+                ObjectronPipelineDiagnostics.LogPlacementCompare(bestNewAnnotation, rawTrack, bestNewCandidate);
+            }
+
+            UpdateLatchStability(bestNewCandidate);
+            ShowLivePreviewBoxes(liveCandidates);
+
+            if (Scanning && CanAutoLocalize() && TryLocalizeNewChair(bestNewCandidate, bestNewAnnotation))
+            {
+                changed = true;
+                ResetLatchStability();
+            }
+
+            if (changed)
+            {
+                if (m_localizedChairs.Count != m_lastLoggedLocalizedCount)
+                {
+                    m_lastLoggedLocalizedCount = m_localizedChairs.Count;
+                    QuestObjectronLogger.Detect($"chair_localized_total={m_localizedChairs.Count}");
+                }
+
+                RefreshLocalizedVisuals();
+            }
+
+            if (m_liveLatchCount == 1 || m_liveLatchCount % 30 == 0)
+            {
+                QuestObjectronLogger.Detect(
+                    $"live_latch #{m_liveLatchCount} stable={m_latchStableFrames}/{RequiredStableLatchFrames} " +
+                    $"candidates={liveCandidates.Count} localized={m_localizedChairs.Count}");
+            }
 
             ReportDetectionHud(lifted, cameraPose, count);
+        }
+
+        private void UpdateLatchStability(PlacementOutput candidate)
+        {
+            if (candidate.Corners == null || candidate.Method == PlacementMethod.None)
+            {
+                ResetLatchStability();
+                return;
+            }
+
+            var center = candidate.Corners[0];
+            if (m_latchCenter.HasValue
+                && Vector3.Distance(m_latchCenter.Value, center) <= LatchStabilityRadiusM)
+            {
+                m_latchStableFrames++;
+            }
+            else
+            {
+                m_latchStableFrames = 1;
+            }
+
+            m_latchCenter = center;
+        }
+
+        private void ResetLatchStability()
+        {
+            m_latchCenter = null;
+            m_latchStableFrames = 0;
+        }
+
+        private bool CanAutoLocalize()
+        {
+            if (!Scanning)
+            {
+                return false;
+            }
+
+            if (m_latchStableFrames < RequiredStableLatchFrames)
+            {
+                return false;
+            }
+
+            return Time.realtimeSinceStartup - m_lastNewLocalizeTime >= NewLocalizeCooldownSec;
+        }
+
+        private bool TryLocalizeNewChair(PlacementOutput output, ObjectAnnotation annotation)
+        {
+            if (output.Corners == null
+                || output.Method == PlacementMethod.None
+                || annotation == null)
+            {
+                return false;
+            }
+
+            if (ObjectronChairDedup.FindDuplicateIndex(m_localizedChairs, output.ObjectId, output.Corners) >= 0)
+            {
+                return false;
+            }
+
+            if (!ObjectronDetectionQuality.TryEvaluate(output, 0f, 0f, out var quality)
+                || !ObjectronChairSizeFit.TryScore(output.Corners, out _, out var detectedSortedM))
+            {
+                return false;
+            }
+
+            var corners = (Vector3[])output.Corners.Clone();
+            if (TrySnapLocalizedCorners(annotation, corners, out var snapped))
+            {
+                corners = snapped;
+            }
+
+            m_localizedChairs.Add(new ObjectronLocalizedChairState
+            {
+                ObjectId = output.ObjectId,
+                Method = output.Method,
+                Corners = corners,
+                Annotation = annotation,
+                DebugReport = output.DebugReport,
+                SizeFitScore = quality.SizeFitScore,
+                QualityScore = quality.Score,
+                DetectedExtentsSortedM = detectedSortedM,
+                LastRefineTime = Time.realtimeSinceStartup,
+                LastQuality = quality,
+            });
+
+            m_lastNewLocalizeTime = Time.realtimeSinceStartup;
+            ApplyAdaptiveGraphCap();
+            QuestObjectronLogger.Detect(
+                $"chair_localized id={output.ObjectId} method={output.Method} " +
+                $"center={corners[0]:F2} quality={quality.Score:F3} stable={m_latchStableFrames} " +
+                $"total={m_localizedChairs.Count} — point at next chair");
+            return true;
+        }
+
+        private bool TrySnapLocalizedCorners(
+            ObjectAnnotation annotation,
+            Vector3[] corners,
+            out Vector3[] snapped)
+        {
+            snapped = null;
+            if (m_environmentRaycast == null || !m_environmentRaycast.HasScenePermission())
+            {
+                return false;
+            }
+
+            var modelHalf = ObjectronMediaPipeCoordinates.GetHalfExtents(annotation);
+            if (!ObjectronFloorPlaneSnap.TrySnapBoxToFloor(
+                    m_environmentRaycast,
+                    annotation.ObjectId,
+                    corners,
+                    modelHalf,
+                    out var floored,
+                    out _,
+                    out _))
+            {
+                return false;
+            }
+
+            snapped = floored;
+            return true;
+        }
+
+        private bool ShouldAttemptRefine(ObjectronLocalizedChairState chair, float centerJumpM)
+        {
+            var now = Time.realtimeSinceStartup;
+            if (now - chair.LastRefineTime < RefineCooldownSec && centerJumpM < RefineMotionBypassM)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private void ShowLivePreviewBoxes(IReadOnlyList<Vector3[]> candidateCorners)
+        {
+            if (m_bboxDrawer == null)
+            {
+                return;
+            }
+
+            if (!Scanning || candidateCorners == null || candidateCorners.Count == 0)
+            {
+                m_bboxDrawer.SetDetections(null);
+                return;
+            }
+
+            m_bboxDrawer.SetDetections(candidateCorners);
         }
 
         private void ProcessEmptyDetections()
         {
             if (m_localizedChairs.Count > 0)
             {
+                m_bboxDrawer?.SetDetections(null);
                 m_emptyLogCount++;
                 var primary = m_localizedChairs[0];
                 PushHud(
@@ -619,134 +960,65 @@ namespace QuestObjectron
             }
         }
 
-        private void ProcessChairPlacements(FrameAnnotation lifted, IReadOnlyList<PlacementOutput> placementOutputs)
-        {
-            var changed = false;
-            var acceptedThisFrame = new List<PlacementOutput>();
-            foreach (var output in placementOutputs)
-            {
-                if (output.Corners == null || output.Method == PlacementMethod.None)
-                {
-                    continue;
-                }
-
-                if (!ObjectronBoxValidation.TryGetExtentMeters(output.Corners, out _))
-                {
-                    continue;
-                }
-
-                if (IsDuplicatePlacement(output, acceptedThisFrame))
-                {
-                    QuestObjectronLogger.Detect(
-                        $"chair_duplicate_skipped id={output.ObjectId} center={output.Corners[0]:F2}");
-                    continue;
-                }
-
-                if (!ObjectronChairSizeFit.TryScore(output.Corners, out var sizeScore, out var detectedSortedM))
-                {
-                    continue;
-                }
-
-                var center = output.Corners[0];
-                var existingIndex = ObjectronChairDedup.FindDuplicateIndex(
-                    m_localizedChairs, output.ObjectId, output.Corners);
-                if (existingIndex >= 0)
-                {
-                    if (TryRefineLocalizedChair(existingIndex, output, lifted, sizeScore, detectedSortedM))
-                    {
-                        changed = true;
-                    }
-
-                    acceptedThisFrame.Add(output);
-                    continue;
-                }
-
-                if (!Scanning)
-                {
-                    continue;
-                }
-
-                var annotation = FindAnnotation(lifted, output.ObjectId);
-                m_localizedChairs.Add(new ObjectronLocalizedChairState
-                {
-                    ObjectId = output.ObjectId,
-                    Method = output.Method,
-                    Corners = (Vector3[])output.Corners.Clone(),
-                    Annotation = annotation,
-                    DebugReport = output.DebugReport,
-                    SizeFitScore = sizeScore,
-                    DetectedExtentsSortedM = detectedSortedM,
-                });
-                changed = true;
-                QuestObjectronLogger.Detect(
-                    $"chair_localized id={output.ObjectId} method={output.Method} " +
-                    $"center={center:F2} edges={ObjectronChairSizeFit.FormatExtentsCm(detectedSortedM)} " +
-                    $"size_fit={sizeScore:F3} total={m_localizedChairs.Count}");
-                acceptedThisFrame.Add(output);
-            }
-
-            if (!changed)
-            {
-                return;
-            }
-
-            if (m_localizedChairs.Count != m_lastLoggedLocalizedCount)
-            {
-                m_lastLoggedLocalizedCount = m_localizedChairs.Count;
-                QuestObjectronLogger.Detect($"chair_localized_total={m_localizedChairs.Count}");
-            }
-
-            RefreshLocalizedVisuals();
-        }
-
         private bool TryRefineLocalizedChair(
             int index,
-            PlacementOutput output,
-            FrameAnnotation lifted,
-            float candidateScore,
-            Vector3 candidateSortedM)
+            ObjectAnnotation annotation,
+            PlacementOutput heavy)
         {
             var chair = m_localizedChairs[index];
-            if (!ObjectronChairSizeFit.IsBetterFit(candidateScore, chair.SizeFitScore))
+            var centerJumpM = heavy.Corners != null && chair.Corners != null
+                ? Vector3.Distance(heavy.Corners[0], chair.Corners[0])
+                : 0f;
+
+            if (!ShouldAttemptRefine(chair, centerJumpM))
             {
                 return false;
             }
 
-            var previousScore = chair.SizeFitScore;
-            var previousExtents = chair.DetectedExtentsSortedM;
-            chair.ObjectId = output.ObjectId;
-            chair.Method = output.Method;
-            chair.Corners = (Vector3[])output.Corners.Clone();
-            chair.Annotation = FindAnnotation(lifted, output.ObjectId);
-            chair.DebugReport = output.DebugReport;
-            chair.SizeFitScore = candidateScore;
-            chair.DetectedExtentsSortedM = candidateSortedM;
-            QuestObjectronLogger.Detect(
-                $"chair_size_refined idx={index} id={output.ObjectId} " +
-                $"fit {previousScore:F3}->{candidateScore:F3} " +
-                $"edges {ObjectronChairSizeFit.FormatExtentsCm(previousExtents)}->" +
-                $"{ObjectronChairSizeFit.FormatExtentsCm(candidateSortedM)} " +
-                $"ref={ObjectronChairSizeFit.FormatExtentsCm(ObjectronChairSizeFit.ReferenceExtentsM)}");
-            return true;
-        }
-
-        private static bool IsDuplicatePlacement(
-            PlacementOutput candidate,
-            IReadOnlyList<PlacementOutput> acceptedThisFrame)
-        {
-            foreach (var existing in acceptedThisFrame)
+            if (heavy.Corners == null || heavy.Method == PlacementMethod.None)
             {
-                if (ObjectronChairDedup.AreSameChair(
-                        candidate.ObjectId,
-                        candidate.Corners,
-                        existing.ObjectId,
-                        existing.Corners))
-                {
-                    return true;
-                }
+                return false;
             }
 
-            return false;
+            if (!ObjectronDetectionQuality.TryEvaluate(heavy, 0f, centerJumpM, out var quality))
+            {
+                return false;
+            }
+
+            if (!ObjectronDetectionQuality.IsBetterThan(quality, chair.LastQuality))
+            {
+                return false;
+            }
+
+            if (!ObjectronChairSizeFit.TryScore(heavy.Corners, out var sizeScore, out var detectedSortedM))
+            {
+                return false;
+            }
+
+            var corners = (Vector3[])heavy.Corners.Clone();
+            if (TrySnapLocalizedCorners(annotation, corners, out var snapped))
+            {
+                corners = snapped;
+            }
+
+            var previousScore = chair.QualityScore;
+            var previousExtents = chair.DetectedExtentsSortedM;
+            chair.ObjectId = heavy.ObjectId;
+            chair.Method = heavy.Method;
+            chair.Corners = corners;
+            chair.Annotation = annotation;
+            chair.DebugReport = heavy.DebugReport;
+            chair.SizeFitScore = sizeScore;
+            chair.QualityScore = quality.Score;
+            chair.DetectedExtentsSortedM = detectedSortedM;
+            chair.LastRefineTime = Time.realtimeSinceStartup;
+            chair.LastQuality = quality;
+            QuestObjectronLogger.Detect(
+                $"chair_refined idx={index} id={heavy.ObjectId} " +
+                $"quality {previousScore:F3}->{quality.Score:F3} " +
+                $"edges {ObjectronChairSizeFit.FormatExtentsCm(previousExtents)}->" +
+                $"{ObjectronChairSizeFit.FormatExtentsCm(detectedSortedM)}");
+            return true;
         }
 
         private void RefreshLocalizedVisuals()
@@ -906,15 +1178,15 @@ namespace QuestObjectron
         {
             if (localizedCount >= maxChairs)
             {
-                return $"all {maxChairs} chairs localized — refining size; Y=reset";
+                return $"all {maxChairs} chairs localized — frozen until better view; Y=reset";
             }
 
             if (localizedCount > 0)
             {
-                return $"localized {localizedCount}/{maxChairs} — refining size; Y=reset";
+                return $"localized {localizedCount}/{maxChairs} — thick=scanning thin=pinned frozen; Y=reset";
             }
 
-            return "scanning — point at each chair (~45×45×90 cm); Y=reset";
+            return "scanning — point at each chair; hold steady ~0.5s to pin; then next chair";
         }
 
         private static int CountKeypointsWith2D(ObjectAnnotation ann)
@@ -978,14 +1250,6 @@ namespace QuestObjectron
             {
                 textureFrame.ReadTextureFromOnCPU(sourceTexture);
             }
-        }
-
-        private static bool IsHeadPoseReliable()
-        {
-            [DllImport("OVRPlugin", CallingConvention = CallingConvention.Cdecl)]
-            static extern OVRPlugin.Result ovrp_GetNodePoseStateAtTime(double time, OVRPlugin.Node nodeId, out OVRPlugin.PoseStatef nodePoseState);
-
-            return ovrp_GetNodePoseStateAtTime(OVRPlugin.GetTimeInSeconds(), OVRPlugin.Node.Head, out _).IsSuccess();
         }
     }
 }

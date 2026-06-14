@@ -420,7 +420,9 @@ namespace QuestObjectron
             m_objectronGraph.StartRun(m_imageSource);
             m_graphReady = true;
             m_state = BoxDebugState.Ready;
-            QuestObjectronLogger.Detect("box_debug graph_started — B or Capture & Detect to show box");
+            QuestObjectronLogger.Detect(
+                "box_debug graph_started — same ObjectronGpuSubgraph as chair (stage1=SSD rects, stage2=lifted_objects); " +
+                "placement=ObjectronWorldPlacement depth-refined (NOT stage-1 only). B or Capture to show box");
 
             var waitEndOfFrame = new WaitForEndOfFrame();
 

@@ -13,6 +13,9 @@ namespace QuestObjectron
         public ObjectAnnotation Annotation;
         public ObjectronPlacementDebugReport? DebugReport;
         public float SizeFitScore = float.MaxValue;
+        public float QualityScore = float.MaxValue;
         public Vector3 DetectedExtentsSortedM;
+        public float LastRefineTime = -999f;
+        public DetectionQualitySnapshot LastQuality;
     }
 }
