@@ -2,7 +2,24 @@
 
 This branch replaces MediaPipe Objectron with **NVIDIA CenterPose** (Isaac ROS `deployable_dla34` chair ONNX) for category-level chair pose on Quest 3 passthrough.
 
-## Pipeline
+## Quick start (after automated setup)
+
+1. Open project in **Unity 6000.2.13f1**.
+2. If `Packages/com.github.homuler.mediapipe` is missing, run from repo root:
+   ```powershell
+   .\install_mediapipe.ps1
+   ```
+3. Open **`Assets/ObjectronDetection/Scenes/CenterPoseChairDetection.unity`** (or launch app → **CenterPose Chair (recommended)**).
+4. **File → Build Settings → Android → Build And Run** to Quest 3 (USB, Developer Mode on).
+
+Model assets on disk:
+- `Assets/ObjectronDetection/CenterPose/Models/chair.sentis` (runtime, generated from ONNX)
+- `chair.onnx` is gitignored; copy via `scripts/copy_centerpose_chair_model.ps1` if you need to reconvert.
+
+Re-run full editor setup (copy ONNX + Sentis + scene wiring):
+- Menu: **QuestObjectron → CenterPose → Run Full Setup**
+- Or batchmode: `-executeMethod QuestObjectron.CenterPose.Editor.CenterPoseChairDetectionSetup.FullSetupBatch`
+
 
 ```
 PassthroughCameraAccess → CenterPose preprocess (512×512)

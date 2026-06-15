@@ -15,7 +15,7 @@ namespace QuestObjectron.CenterPose
         private readonly int m_bboxesIndex;
         private readonly int m_kpsIndex;
         private readonly int m_objScaleIndex;
-        private readonly int m_maxCandidates;
+        private readonly int m_maxCandidates = 100;
 
         public CenterPoseInferenceEngine(ModelAsset modelAsset, BackendType backend = BackendType.CPU)
         {
@@ -31,16 +31,13 @@ namespace QuestObjectron.CenterPose
             m_bboxesIndex = FindOutputIndex(model, "bboxes");
             m_kpsIndex = FindOutputIndex(model, "kps");
             m_objScaleIndex = FindOutputIndex(model, "obj_scale");
-
-            var scoresShape = model.outputs[m_scoresIndex].shape;
-            m_maxCandidates = scoresShape.rank >= 2 ? scoresShape.Get(1) : 100;
         }
 
         public static void Warmup(ModelAsset modelAsset)
         {
             using var engine = new CenterPoseInferenceEngine(modelAsset, BackendType.CPU);
             var zeros = new float[3 * CenterPoseGeometry.InputSize * CenterPoseGeometry.InputSize];
-            using var input = engine.CreateInputTensor(zeros);
+            using var input = CreateInputTensor(zeros);
             engine.m_worker.Schedule(input);
             engine.CompleteAllOutputs();
         }
@@ -114,16 +111,11 @@ namespace QuestObjectron.CenterPose
             return detections;
         }
 
-        private Tensor<float> CreateInputTensor(float[] nchw)
+        private static Tensor<float> CreateInputTensor(float[] nchw)
         {
-            var input = new Tensor<float>(new TensorShape(1, 3, CenterPoseGeometry.InputSize, CenterPoseGeometry.InputSize));
-            var buffer = input.AsNativeArray();
-            for (var i = 0; i < nchw.Length; i++)
-            {
-                buffer[i] = nchw[i];
-            }
-
-            return input;
+            return new Tensor<float>(
+                new TensorShape(1, 3, CenterPoseGeometry.InputSize, CenterPoseGeometry.InputSize),
+                nchw);
         }
 
         private static NormalizedKeypoint2D[] BuildNormalizedKeypoints(Vector2[] cornersPx, int width, int height)

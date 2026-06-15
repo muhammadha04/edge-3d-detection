@@ -7,6 +7,7 @@ using System.IO;
 using Meta.XR.Samples;
 using PassthroughCameraSamples.MultiObjectDetection;
 using QuestObjectron;
+using QuestObjectron.CenterPose;
 using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -21,8 +22,20 @@ namespace PassthroughCameraSamples.StartScene
         public OVROverlay Text;
         public OVRCameraRig VrRig;
         [SerializeField] private ModelAsset m_objectDetectionModel;
+        [SerializeField] private ModelAsset m_centerPoseChairModel;
 
-        private void Awake() => SentisInferenceRunManager.PreloadModel(m_objectDetectionModel);
+        private void Awake()
+        {
+            if (m_objectDetectionModel != null)
+            {
+                SentisInferenceRunManager.PreloadModel(m_objectDetectionModel);
+            }
+
+            if (m_centerPoseChairModel != null)
+            {
+                CenterPoseInferenceEngine.Warmup(m_centerPoseChairModel);
+            }
+        }
 
         private void Start()
         {
@@ -61,13 +74,21 @@ namespace PassthroughCameraSamples.StartScene
                 foreach (var scene in questToolScenes)
                 {
                     var label = Path.GetFileNameWithoutExtension(scene.Item2);
-                    if (label.Contains("EnvironmentDepth"))
+                    if (label.Contains("CenterPoseChair"))
+                    {
+                        label = "CenterPose Chair (recommended)";
+                    }
+                    else if (label.Contains("EnvironmentDepth"))
                     {
                         label = "Environment Depth (live)";
                     }
                     else if (label.Contains("ObjectronBoxDebug"))
                     {
                         label = "Box Debug (snapshot)";
+                    }
+                    else if (label.Contains("ObjectronCup"))
+                    {
+                        label = "Objectron Cup (legacy)";
                     }
 
                     _ = uiBuilder.AddButton(label, () => LoadScene(scene.Item1), -1, DebugUIBuilder.DEBUG_PANE_LEFT);

@@ -116,12 +116,13 @@ namespace QuestObjectron
         {
             if (m_centerPoseModel == null)
             {
-                QuestObjectronLogger.Err("CenterPose model asset is not assigned — convert chair.onnx to .sentis");
+                QuestObjectronLogger.Err("CenterPose model asset is not assigned — run QuestObjectron/CenterPose/Run Full Setup");
                 yield break;
             }
 
             yield return WaitForPermissions();
             m_cameraReader = new CenterPoseCameraReader();
+            CenterPoseInferenceEngine.Warmup(m_centerPoseModel);
             m_engine = new CenterPoseInferenceEngine(m_centerPoseModel, m_backend);
             m_pipeline = StartCoroutine(RunPipeline());
         }

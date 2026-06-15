@@ -1,4 +1,6 @@
 #if UNITY_EDITOR
+using Mediapipe.Unity;
+using Mediapipe.Unity.Objectron;
 using Meta.XR;
 using PassthroughCameraSamples.MultiObjectDetection;
 using QuestObjectron;
@@ -14,15 +16,200 @@ namespace QuestObjectron.CenterPose.Editor
     public static class CenterPoseChairDetectionSetup
     {
         private const string ScenePath = "Assets/ObjectronDetection/Scenes/CenterPoseChairDetection.unity";
+        private const string CupScenePath = "Assets/ObjectronDetection/Scenes/ObjectronCupDetection.unity";
         private const string SentisPath = "Assets/ObjectronDetection/CenterPose/Models/chair.sentis";
         private const string OnnxPath = "Assets/ObjectronDetection/CenterPose/Models/chair.onnx";
         private const string ConfigurePrefKey = "QuestObjectron_CenterPoseChairSceneConfigured_v1";
 
+        private static string DefaultOnnxSourcePath => System.IO.Path.GetFullPath(
+            System.IO.Path.Combine(Application.dataPath, "../../pose_estimation_app/models/centerpose/chair.onnx"));
+
+        /// <summary>Unity batchmode: -executeMethod QuestObjectron.CenterPose.Editor.CenterPoseChairDetectionSetup.FullSetupBatch</summary>
+        public static void FullSetupBatch()
+        {
+            try
+            {
+                if (!CopyOnnxFromDefaultPath(showDialog: false))
+                {
+                    Debug.LogError("QuestObjectron CenterPose: chair.onnx not found. Expected pose_estimation_app/models/centerpose/chair.onnx");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+                ConvertOnnxToSentis();
+                CreateSceneFromCupTemplate(silent: true);
+                AddSceneToBuildSettings(ScenePath);
+                AssignStartMenuChairModel();
+                EditorPrefs.SetBool(ConfigurePrefKey, true);
+                AssetDatabase.SaveAssets();
+                Debug.Log("QuestObjectron CenterPose: FullSetupBatch completed.");
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"QuestObjectron CenterPose FullSetupBatch failed: {ex.Message}\n{ex.StackTrace}");
+                EditorApplication.Exit(1);
+            }
+        }
+
+        [MenuItem("QuestObjectron/CenterPose/Run Full Setup (Copy ONNX + Sentis + Scene)")]
+        public static void FullSetupMenu()
+        {
+            if (!CopyOnnxFromDefaultPath(showDialog: true))
+            {
+                return;
+            }
+
+            AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+            ConvertOnnxToSentis();
+            CreateSceneFromCupTemplate(silent: false);
+            AddSceneToBuildSettings(ScenePath);
+            AssignStartMenuChairModel();
+            EditorPrefs.SetBool(ConfigurePrefKey, true);
+        }
+
         [MenuItem("QuestObjectron/CenterPose/Copy Chair ONNX From Pose Estimation App")]
         public static void CopyOnnxFromPoseApp()
         {
-            var defaultSource = System.IO.Path.GetFullPath(
-                System.IO.Path.Combine(Application.dataPath, "../../../pose_estimation_app/models/centerpose/chair.onnx"));
+            CopyOnnxFromDefaultPath(showDialog: true);
+        }
+
+        private static bool CopyOnnxFromDefaultPath(bool showDialog)
+        {
+            var source = DefaultOnnxSourcePath;
+            if (!System.IO.File.Exists(source) && showDialog)
+            {
+                source = EditorUtility.OpenFilePanel(
+                    "Select chair.onnx",
+                    System.IO.Path.GetDirectoryName(DefaultOnnxSourcePath) ?? "",
+                    "onnx");
+            }
+
+            if (string.IsNullOrEmpty(source) || !System.IO.File.Exists(source))
+            {
+                return false;
+            }
+
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(OnnxPath) ?? OnnxPath);
+            System.IO.File.Copy(source, OnnxPath, true);
+            AssetDatabase.Refresh();
+            Debug.Log($"QuestObjectron: copied ONNX to {OnnxPath}");
+            return true;
+        }
+
+        [MenuItem("QuestObjectron/CenterPose/Create Scene From Cup Template")]
+        public static void CreateSceneFromCupTemplateMenu()
+        {
+            CreateSceneFromCupTemplate(silent: false);
+        }
+
+        private static void CreateSceneFromCupTemplate(bool silent)
+        {
+            if (!System.IO.File.Exists(CupScenePath))
+            {
+                Debug.LogError($"QuestObjectron: cup template scene missing at {CupScenePath}");
+                return;
+            }
+
+            EditorSceneManager.OpenScene(CupScenePath, OpenSceneMode.Single);
+
+            var bootstrap = GameObject.Find("Bootstrap");
+            if (bootstrap != null)
+            {
+                bootstrap.SetActive(false);
+            }
+
+            DisableSentisComponents();
+
+            var cameraAccess = Object.FindFirstObjectByType<PassthroughCameraAccess>(FindObjectsInactive.Include);
+            var environmentRaycast = Object.FindFirstObjectByType<EnvironmentRayCastSampleManager>(FindObjectsInactive.Include);
+
+            var questRoot = GameObject.Find("QuestObjectron");
+            if (questRoot == null)
+            {
+                Debug.LogError("QuestObjectron: QuestObjectron root not found in cup scene.");
+                return;
+            }
+
+            MigrateQuestRootToCenterPose(questRoot, cameraAccess, environmentRaycast);
+
+            if (!EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), ScenePath))
+            {
+                Debug.LogError($"QuestObjectron: failed to save {ScenePath}");
+                return;
+            }
+
+            AddSceneToBuildSettings(ScenePath);
+            if (!silent)
+            {
+                Debug.Log($"QuestObjectron: saved CenterPose scene to {ScenePath}");
+            }
+        }
+
+        private static void MigrateQuestRootToCenterPose(
+            GameObject questRoot,
+            PassthroughCameraAccess cameraAccess,
+            EnvironmentRayCastSampleManager environmentRaycast)
+        {
+            var imageSource = questRoot.GetComponent<PassthroughImageSource>();
+            var questVisuals = questRoot.GetComponent<ObjectronQuestVisuals>();
+
+            DestroyIfPresent<ObjectronCupDetectionManager>(questRoot);
+            DestroyIfPresent<ObjectronGraph>(questRoot);
+            DestroyIfPresent<TextureFramePool>(questRoot);
+            DestroyIfPresent<ObjectronSceneReferences>(questRoot);
+            DestroyIfPresent<ObjectronEnvironmentDepthProvider>(questRoot);
+            DestroyIfPresent<ObjectronPassthroughOverlay>(questRoot);
+            DestroyIfPresent<ObjectronHeadsetHud>(questRoot);
+            DestroyIfPresent<ObjectronPlacementFixMenu>(questRoot);
+
+            questRoot.name = "QuestCenterPose";
+
+            if (questRoot.GetComponent<ObjectronDisableSentis>() == null)
+            {
+                questRoot.AddComponent<ObjectronDisableSentis>();
+            }
+
+            if (questRoot.GetComponent<CenterPoseSceneReferences>() == null)
+            {
+                questRoot.AddComponent<CenterPoseSceneReferences>();
+            }
+
+            var manager = questRoot.GetComponent<CenterPoseChairDetectionManager>()
+                ?? questRoot.AddComponent<CenterPoseChairDetectionManager>();
+
+            if (imageSource == null)
+            {
+                imageSource = questRoot.AddComponent<PassthroughImageSource>();
+            }
+
+            if (questVisuals == null)
+            {
+                questVisuals = questRoot.AddComponent<ObjectronQuestVisuals>();
+            }
+
+            WireManager(manager, cameraAccess, imageSource, environmentRaycast, questVisuals);
+
+            var refs = questRoot.GetComponent<CenterPoseSceneReferences>();
+            var refsSo = new SerializedObject(refs);
+            refsSo.FindProperty("m_manager").objectReferenceValue = manager;
+            refsSo.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void DestroyIfPresent<T>(GameObject go) where T : Component
+        {
+            var component = go.GetComponent<T>();
+            if (component != null)
+            {
+                Object.DestroyImmediate(component);
+            }
+        }
+
+        [MenuItem("QuestObjectron/CenterPose/Copy Chair ONNX From Pose Estimation App (Browse)")]
+        public static void CopyOnnxFromPoseAppBrowse()
+        {
+            var defaultSource = DefaultOnnxSourcePath;
             var source = EditorUtility.OpenFilePanel("Select chair.onnx", System.IO.Path.GetDirectoryName(defaultSource) ?? "", "onnx");
             if (string.IsNullOrEmpty(source))
             {
@@ -131,7 +318,6 @@ namespace QuestObjectron.CenterPose.Editor
             var manager = detectionRoot.AddComponent<CenterPoseChairDetectionManager>();
             var imageSource = detectionRoot.AddComponent<PassthroughImageSource>();
             var questVisuals = detectionRoot.AddComponent<ObjectronQuestVisuals>();
-            questVisuals.Prewarm();
 
             WireManager(manager, cameraAccess, imageSource, environmentRaycast, questVisuals);
 
@@ -162,7 +348,6 @@ namespace QuestObjectron.CenterPose.Editor
                 ?? detectionRoot.AddComponent<PassthroughImageSource>();
             var questVisuals = detectionRoot.GetComponent<ObjectronQuestVisuals>()
                 ?? detectionRoot.AddComponent<ObjectronQuestVisuals>();
-            questVisuals.Prewarm();
             WireManager(manager, cameraAccess, imageSource, environmentRaycast, questVisuals);
 
             var refs = detectionRoot.GetComponent<CenterPoseSceneReferences>();
@@ -192,18 +377,47 @@ namespace QuestObjectron.CenterPose.Editor
 
             so.FindProperty("m_questVisuals").objectReferenceValue = questVisuals;
 
-            var sentis = AssetDatabase.LoadAssetAtPath<ModelAsset>(SentisPath);
-            if (sentis != null)
+            var model = AssetDatabase.LoadAssetAtPath<ModelAsset>(SentisPath)
+                ?? AssetDatabase.LoadAssetAtPath<ModelAsset>(OnnxPath);
+            if (model != null)
             {
-                so.FindProperty("m_centerPoseModel").objectReferenceValue = sentis;
+                so.FindProperty("m_centerPoseModel").objectReferenceValue = model;
             }
             else
             {
-                Debug.LogWarning($"QuestObjectron: assign {SentisPath} after ONNX conversion.");
+                Debug.LogWarning($"QuestObjectron: assign {SentisPath} or {OnnxPath} after import.");
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();
             manager.WireReferences(cameraAccess, imageSource, environmentRaycast, questVisuals);
+        }
+
+        private static void AssignStartMenuChairModel()
+        {
+            const string startScenePath = "Assets/PassthroughCameraApiSamples/StartScene/StartScene.unity";
+            if (!System.IO.File.Exists(startScenePath))
+            {
+                return;
+            }
+
+            var model = AssetDatabase.LoadAssetAtPath<ModelAsset>(SentisPath)
+                ?? AssetDatabase.LoadAssetAtPath<ModelAsset>(OnnxPath);
+            if (model == null)
+            {
+                return;
+            }
+
+            var scene = EditorSceneManager.OpenScene(startScenePath, OpenSceneMode.Additive);
+            foreach (var menu in Object.FindObjectsByType<PassthroughCameraSamples.StartScene.StartMenu>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                var so = new SerializedObject(menu);
+                so.FindProperty("m_centerPoseChairModel").objectReferenceValue = model;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            EditorSceneManager.CloseScene(scene, true);
         }
 
         private static void DisableSentisComponents()
