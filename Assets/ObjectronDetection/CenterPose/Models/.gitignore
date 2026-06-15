@@ -1,0 +1,2 @@
+# Download with scripts/copy_centerpose_chair_model.ps1 then convert in Unity Editor.
+*.onnx

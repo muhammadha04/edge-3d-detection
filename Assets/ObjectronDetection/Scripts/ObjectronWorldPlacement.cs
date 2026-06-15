@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Mediapipe;
 using Meta.XR;
 using PassthroughCameraSamples.MultiObjectDetection;
+using QuestObjectron.CenterPose;
 using UnityEngine;
 
 namespace QuestObjectron
@@ -198,6 +199,38 @@ namespace QuestObjectron
                 }
 
                 results.Add(new PlacementOutput(annotation.ObjectId, corners, output.Method, output.DebugReport));
+            }
+
+            return results;
+        }
+
+        /// <summary>Places CenterPose chair detections using the same 2D keypoint raycast path as Objectron.</summary>
+        public List<PlacementOutput> PlaceCenterPoseDetections(
+            IReadOnlyList<CenterPoseDetection> detections,
+            Pose cameraPose)
+        {
+            var results = new List<PlacementOutput>();
+            if (detections == null || detections.Count == 0)
+            {
+                return results;
+            }
+
+            for (var i = 0; i < detections.Count; i++)
+            {
+                var detection = detections[i];
+                if (detection.Keypoints == null || detection.Keypoints.Length < 9)
+                {
+                    continue;
+                }
+
+                if (!TryFromNormalizedKeypoints(detection.Keypoints, cameraPose, out var corners))
+                {
+                    continue;
+                }
+
+                var objectId = i;
+                corners = Smooth(objectId, corners);
+                results.Add(new PlacementOutput(objectId, corners, PlacementMethod.Keypoint2DRaycast, null));
             }
 
             return results;
@@ -535,15 +568,13 @@ namespace QuestObjectron
 
         private bool TryFromKeypoint2D(ObjectAnnotation annotation, Pose cameraPose, out Vector3[] corners)
         {
-            corners = new Vector3[9];
-            var has = new bool[9];
+            corners = null;
             if (annotation.Keypoints == null || annotation.Keypoints.Count < 4)
             {
-                corners = null;
                 return false;
             }
 
-            var filled = 0;
+            var normalized = new List<NormalizedKeypoint2D>(annotation.Keypoints.Count);
             foreach (var kp in annotation.Keypoints)
             {
                 if (kp.Point2D == null)
@@ -551,14 +582,36 @@ namespace QuestObjectron
                     continue;
                 }
 
+                normalized.Add(new NormalizedKeypoint2D(kp.Id, kp.Point2D.X, kp.Point2D.Y));
+            }
+
+            return TryFromNormalizedKeypoints(normalized, cameraPose, out corners);
+        }
+
+        private bool TryFromNormalizedKeypoints(
+            IReadOnlyList<NormalizedKeypoint2D> keypoints,
+            Pose cameraPose,
+            out Vector3[] corners)
+        {
+            corners = new Vector3[9];
+            var has = new bool[9];
+            if (keypoints == null || keypoints.Count < 4)
+            {
+                corners = null;
+                return false;
+            }
+
+            var filled = 0;
+            foreach (var kp in keypoints)
+            {
                 var idx = kp.Id;
                 if (idx < 0 || idx > 8)
                 {
                     continue;
                 }
 
-                var x = m_options.MirrorInferenceHorizontal ? 1f - kp.Point2D.X : kp.Point2D.X;
-                var uv = new Vector2(x, 1f - kp.Point2D.Y);
+                var x = m_options.MirrorInferenceHorizontal ? 1f - kp.X : kp.X;
+                var uv = new Vector2(x, 1f - kp.Y);
                 var world = RaycastToWorld(uv, cameraPose);
                 if (!world.HasValue)
                 {
