@@ -1,367 +1,222 @@
-# Edge 3D Detection (Quest Objectron)
+# QuestDetect3D (v2): metric 3D object detection with confidence on Meta Quest 3
 
-Quest 3 mixed-reality app that runs **MediaPipe Objectron** on **Meta Passthrough Camera** frames and draws **world-space 3D bounding boxes** over real cups/mugs. The project focuses on stable environment-anchored placement (not head-locked overlays), head-tilt compensation, and repeatable scan sessions.
+QuestDetect3D runs on a Quest 3 / 3S. It finds objects in the passthrough camera image, works out each one's **real metric 3D box** (position, heading, width × depth × height in cm), fuses that box across many views, and draws it anchored in the room with a **confidence score and ± uncertainty** that the user can see.
 
----
-
-## What it does
-
-| Mode | Scene | Behavior |
-|------|-------|----------|
-| **ObjectronCupDetection** | `ObjectronCupDetection.unity` | Auto-scan up to 3 cups; each cup gets one environment-localized green wireframe box |
-| **Box Debug (snapshot)** | `ObjectronBoxDebug.unity` | Continuous inference + manual Capture / Localize / Clear with labeled X/Y/Z edges |
-
-Both modes:
-- Use passthrough MR (see the real room)
-- Pair each camera frame with the PCA pose captured at submit time
-- Compensate headset roll when mapping model output to world space
-- Tear down fully when returning to the main menu (☰ Start)
-
----
-
-## Requirements
-
-- **Unity Hub** → Unity **6000.0.38f1** or newer (project tested on **6000.2.13f1**)
-- **Meta Quest 3 / 3S**, Horizon OS **v74+**
-- Quest **Developer Mode** + USB debugging enabled
-- **Windows** PC for `install_mediapipe.ps1` (or extract the MediaPipe `.tgz` manually on macOS/Linux)
-- Physical headset — Passthrough Camera API does **not** work in XR Simulator
-
----
-
-## Clone and setup (from scratch)
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/muhammadha04/edge-3d-detection.git
-cd edge-3d-detection
-```
-
-> The Unity project root is the repo root (`QuestObjectron3D` layout). Open this folder in Unity Hub.
-
-### 2. Install MediaPipe (required — not in git)
-
-Native MediaPipe binaries and the Unity package exceed GitHub’s file size limits. After clone, run:
-
-```powershell
-.\install_mediapipe.ps1
-```
-
-This script:
-
-1. Downloads [`com.github.homuler.mediapipe-0.11.0.tgz`](https://github.com/homuler/MediaPipeUnityPlugin/releases/download/v0.11.0/com.github.homuler.mediapipe-0.11.0.tgz) (~500 MB) from the [MediaPipeUnityPlugin releases](https://github.com/homuler/MediaPipeUnityPlugin/releases/tag/v0.11.0)
-2. Extracts it to `Packages/com.github.homuler.mediapipe/`
-
-**Manual install (if you skip the script):**
-
-```powershell
-# From repo root
-mkdir Packages -Force
-Invoke-WebRequest -Uri "https://github.com/homuler/MediaPipeUnityPlugin/releases/download/v0.11.0/com.github.homuler.mediapipe-0.11.0.tgz" -OutFile "Packages/com.github.homuler.mediapipe-0.11.0.tgz"
-tar -xzf Packages/com.github.homuler.mediapipe-0.11.0.tgz -C Packages
-Move-Item Packages/package Packages/com.github.homuler.mediapipe
-```
-
-### 3. Where the Objectron models come from
-
-| Asset | Source | Notes |
-|-------|--------|--------|
-| **Objectron Cup model** | Inside `com.github.homuler.mediapipe` | Cup category graph + weights; loaded at runtime by the scene **Bootstrap** from StreamingAssets (e.g. `objectron_cpu.txt` / GPU graph) |
-| **MediaPipe native libs** | Same package | `mediapipe_android.aar`, JNI — why step 2 is mandatory |
-| **Meta MRUK / Passthrough samples** | In repo under `Assets/PassthroughCameraApiSamples/` | Submodule of Meta’s PCA sample project |
-| **Sentis YOLO model** | Meta sample (optional) | Disabled at runtime by `ObjectronDisableSentis`; Objectron does **not** use Sentis |
-
-You do **not** download a separate Objectron `.tflite` — it ships with the homuler package and is referenced by `ObjectronGraph` in the scene.
-
-### 4. Open in Unity
-
-1. Unity Hub → **Add** → select the cloned folder.
-2. Use editor **6000.0.38f1+** (install **Android Build Support** + **OpenJDK** + **NDK**).
-3. First open may take several minutes (Library import).
-
-### 5. Meta project setup
-
-1. **Meta → Tools → Project Setup Tool** → **Fix all** / **Apply all** (passthrough, OpenXR, etc.).
-2. Optional: **QuestObjectron → Configure Objectron Cup Detection Scene** if scene references look broken.
-
-### 6. Build and run on Quest
-
-1. **File → Build Settings** → **Android** → **Switch Platform**.
-2. Connect Quest via USB → enable debugging on headset.
-3. **Build And Run** (or Build APK, then `adb install`).
-4. On first launch, grant **camera** and **spatial** permissions.
-5. Main menu → **Quest Objectron / Tools**:
-   - **ObjectronCupDetection** — auto cup scan
-   - **Box Debug (snapshot)** — manual capture/localize
-
-### 7. Logcat (optional)
-
-```bash
-adb logcat -s QuestObj3D Unity
-```
-
-### What is *not* in git
-
-- `Packages/com.github.homuler.mediapipe/` — run `install_mediapipe.ps1`
-- `Library/`, `Temp/`, `Logs/`, `UserSettings/` — Unity cache
-- `*.apk` — local builds
-
----
-
-## End-to-end pipeline (start → box in the room)
-
-High-level flow shared by both scenes:
+> This branch (`v2`) is a clean rewrite. The original prototype (branches `main`, `chair`, `twostage`, `scancalibration`, `feature/centerpose-chair`) is kept for reference. See [What changed from v1](#6-what-changed-from-v1).
 
 ```
-Boot / permissions
-  → MediaPipe Bootstrap (GPU)
-  → PassthroughCameraAccess + PassthroughImageSource
-  → ObjectronGraph (Cup model, async)
-  → [per frame] capture pose + copy texture → inference
-  → FrameAnnotation (2D keypoints + 3D translation/rotation/scale)
-  → ObjectronWorldPlacement.PlaceDetailed()
-  → orientation constraints (roll / gravity / upright-on-table)
-  → world-space 9-point corner array
-  → wireframe visuals (QuestVisuals or LabeledBoxVisuals)
-```
-
-### Step-by-step (one inference frame)
-
-1. **Capture** — `PassthroughCameraAccess.GetCameraPose()` is read and enqueued in `ObjectronFramePoseQueue` *before* the texture is submitted to MediaPipe. This fixes async drift (using the pose at callback time would make boxes follow the head).
-
-2. **Inference** — Every 2nd frame (`InferenceEveryNFrames = 2`), the PCA image is copied into a `TextureFrame` and sent to Objectron (Cup). MediaPipe returns a `FrameAnnotation` with up to 3 `ObjectAnnotation` entries (translation, rotation 3×3, scale, keypoints, object id).
-
-3. **Main-thread process** — The pending annotation is dequeued with the **paired** camera pose (`DequeueOrCurrent`). Processing is throttled to ≥ 0.2 s between runs (`DetectionProcessMinInterval`) to limit log/UI spam.
-
-4. **Raw placement** — `ObjectronWorldPlacement.TryPlaceAnnotation()` picks the first working method:
-   - **Keypoint3D** — 3D keypoints transformed camera → world
-   - **Keypoint2DRaycast** — 2D keypoints → viewport ray → MRUK scene raycast (or 0.75 m fallback)
-   - **TranslationBox** — model translation + rotation matrix + half-extents → 8 corners
-
-   Camera-local points are converted with:
-
-   ```
-   worldPoint = placementPose.position + placementPose.rotation * cameraLocalMeters
-   ```
-
-   where `placementPose = GetRollCompensatedPose(cameraPose)` when `CompensateHeadRoll` is on (head roll removed; pitch/yaw kept).
-
-5. **Depth refinement** (when 2D keypoints yield a viewport rect) — optional path in `PlaceOne()`:
-   - Raycast at mask center for distance
-   - **ModelOrientedMaskBox** — model rotation + depth-scaled extents
-   - **DepthRefinedBox** — scaled oriented box
-   - **TableSnappedBox** — optional MRUK table snap (`EnableTableSnap`)
-   - **MaskAlignedBox** — camera-aligned fallback (**disabled in cup mode** — it billboards toward the viewer)
-
-6. **Post-placement constraints** (in `PlaceDetailed`, cup mode always on):
-
-   | Step | Function | What it does |
-   |------|----------|--------------|
-   | Roll / gravity | `TryAlignBoxToGravity` | Rotates box so the bottom face normal points **down** (−Y) |
-   | Upright on table | `TryConstrainUprightOnTable` | Rebuilds box with world +Y vertical; **yaw** from the longer horizontal model edge; no camera billboard |
-   | Smoothing | `Smooth(objectId)` | Exponential blend (α = 0.35) per tracked object id |
-
-7. **Corner layout** — 9 points: index `0` = center, `1–8` = corners. Edge lengths for metrics:
-   - X edge: `|corners[2] − corners[1]|`
-   - Y edge: `|corners[3] − corners[1]|`
-   - Z edge: `|corners[5] − corners[1]|`
-
-8. **Cup mode: localize or refine** — See [Cup detection rules](#objectroncupdetection-rules) below.
-
-9. **Visualize** — `ObjectronQuestVisuals.Localize()` draws 12 world-space `LineRenderer` edges parented under `ObjectronVisualsRoot` (world-locked, not parented to the camera).
-
-### Head-tilt math (roll compensation)
-
-MediaPipe outputs pose in the **tilted camera image frame**. When the user tilts their head:
-
-- `RemoveCameraRoll(cameraRotation)` projects camera forward onto the horizontal plane and builds `Quaternion.LookRotation(flatForward, Vector3.up)`.
-- All camera-local model vectors use this leveled pose for world mapping.
-- `TryAlignBoxToGravity` then corrects residual tilt so the mug sits on the table plane.
-
-### Upright-on-table math
-
-Assumes the mug sits on a **flat horizontal surface** (only yaw varies):
-
-1. Find which box axis is most aligned with world up → vertical half-extent.
-2. Of the two horizontal axes, use the **longer** one for yaw (handle + cylinder ≈ 11 cm axis).
-3. Project that axis onto the XZ plane → `flatYaw`.
-4. `worldRot = LookRotation(flatYaw, Vector3.up)`.
-5. Rebuild corners: `corner[i] = center + worldRot * (unitCorner[i] ⊙ halfExtents)`.
-
----
-
-## ObjectronCupDetection rules
-
-### Scan behavior
-
-1. Scene starts **scanning** — inference runs continuously.
-2. **New cup** — center not within **15 cm** of any already-localized cup → box is **frozen** in world space immediately.
-3. **Same cup** — center within 15 cm → no second box; optional **size refinement** only (see below).
-4. Stops adding new cups at **3** (`MaxLocalizedCups` = MediaPipe `maxNumObjects`).
-5. **No 2D overlay** — `ObjectronPassthroughOverlay` disabled; no screen-space boxes.
-
-### Size refinement (`ObjectronCupSizeFit`)
-
-Reference mug extents (handle on left): **11 × 10 × 8 cm** (X × Y × Z).
-
-For each detection, edge lengths are sorted (rotation-invariant) and scored:
-
-```
-score = Σ_axis ((detected_a − ref_a) / ref_a)²
-```
-
-Lower is better. An existing localized cup is **updated** only if the new score improves by at least **5%** (`IsBetterFit`, `minRelativeImprovement = 0.05`). Position/orientation update together with the new corner array.
-
-### Cup mode placement flags (forced in code)
-
-Set in `ObjectronCupDetectionManager.Awake()`:
-
-| Option | Value | Reason |
-|--------|-------|--------|
-| `CompensateHeadRoll` | `true` | Level camera pose for world mapping |
-| `ConstrainUprightOnTable` | `true` | Horizontal bottom, yaw-only rotation |
-| `DisableMaskAlignedFallback` | `true` | Never use camera-facing mask box |
-| `UseMaskWhenBadOrientation` | `false` | Don’t swap to mask on bad orientation |
-| `EnableTableSnap` | `true` | MRUK raycast snap when available |
-| `MirrorInferenceHorizontal` | from `PassthroughImageSource.isHorizontallyFlipped` | Align with PCA flip |
-
-### MediaPipe tuning (inspector / scene)
-
-| Parameter | Default | Meaning |
-|-----------|---------|---------|
-| `m_minDetectionConfidence` | `0.35` | Objectron detection threshold |
-| `m_minTrackingConfidence` | `0.55` | Objectron tracking threshold |
-| `m_runningMode` | `Async` | Non-blocking inference |
-| `InferenceEveryNFrames` | `2` | Run model every 2nd frame |
-| `DetectionProcessMinInterval` | `0.2` s | Min time between main-thread processes |
-| `SameCupCenterRadiusM` | `0.15` m | Duplicate cup dedup radius |
-| `MaxLocalizedCups` | `3` | Max simultaneous localized mugs |
-
----
-
-## Box Debug mode
-
-Continuous inference latches the latest valid placement into memory. User workflow:
-
-1. Point at mug — live inference updates internal latch (`LatchDetection`).
-2. **Capture & Detect** (UI) or **B** — show labeled wireframe from latched corners.
-3. **Localize Box** — pin in world space.
-4. **Clear** or **A** — remove box.
-5. **☰ Start** — return to menu (full cleanup).
-
-Box Debug uses the same placement pipeline but does **not** force cup-mode restrictions (mask fallback remains available in options). It uses `ObjectronLabeledBoxVisuals` for axis labels.
-
----
-
-## Session lifecycle (main menu restart)
-
-Both **ObjectronCupDetection** and **Box Debug** reset to zero when leaving or re-entering:
-
-| When | What runs |
-|------|-----------|
-| **☰ Start** (in scene) | `ObjectronSessionCleanup.LeaveObjectronScene()` → stop graph, clear cups/boxes, destroy `DontDestroyOnLoad` visual roots |
-| **Menu button** (enter scene) | `BeginFreshSession()` before `LoadScene` |
-| **Scene Awake** | `BeginFreshSession()` + manager `ShutdownForSceneExit` flag cleared |
-
-`ShutdownForSceneExit()` stops the inference coroutine, unsubscribes MediaPipe callbacks, calls `objectronGraph.Stop()`, clears localized state, and nulls `ImageSourceProvider.ImageSource`.
-
----
-
-## Architecture diagram
-
-```
-Passthrough MR
-  └─ PassthroughCameraAccess (pose + ViewportPointToRay)
-       └─ PassthroughImageSource → TextureFramePool
-            └─ ObjectronGraph (Cup, async)
-                 └─ FrameAnnotation
-                      └─ ObjectronWorldPlacement
-                           ├─ camera-local pose (MediaPipe frame fixes)
-                           ├─ optional depth / MRUK refinement
-                           ├─ TryAlignBoxToGravity
-                           └─ TryConstrainUprightOnTable (cup mode)
-                                └─ ObjectronQuestVisuals / ObjectronLabeledBoxVisuals
+ Passthrough camera ─► Objectron (2D box keypoints) ─► metric box fit ─► multi-view fusion ─► anchored box + "Chair 87 % · 48×51×86 cm ±2 cm"
+        │                                                   ▲
+        └──────── Depth API (floor / table height) ─────────┘
 ```
 
 ---
 
-## Quest controls
+## 1. What the user sees
 
-### ObjectronCupDetection
+- **Candidate** (pulsing box, label `Chair? 42 %`): seen, but not enough evidence yet.
+- **Confirmed** (solid box with corner brackets): label `Chair 87 %`, then `48 × 51 × 86 cm ±2 cm`, then a confidence bar. The colour runs from red (low confidence) through amber to green (high).
+- **HUD** (follows your gaze lazily): model rate and latency, floor status, number of objects, last fit error, rejected fits.
 
-| Input | Action |
-|-------|--------|
-| **A** (right) | Reset scan — clear all localized cups |
-| **☰ Start** | Main menu + full session cleanup |
+| Button | Action |
+|---|---|
+| A (right) | Next object type: Chair → Cup → Shoe → Camera |
+| B (right) | Debug view. Magenta = network keypoints; cyan = fitted box corners; yellow = error between them |
+| Y (left) | Reset all objects |
+| X (left) | Hide / show HUD |
 
-### Box Debug
-
-| Input | Action |
-|-------|--------|
-| **Capture & Detect** (UI) or **B** | Show latched labeled box |
-| **Localize Box** | Pin box in room space |
-| **Clear Box** or **A** | Remove box |
-| **☰ Start** | Main menu + full session cleanup |
+Tips: glance at the floor for a second at start-up. Keep objects 1–3 m away. Walking around an object raises its confidence.
 
 ---
 
-## Logcat
+## 2. Pipeline in detail
 
-```bash
-adb logcat -s QuestObj3D Unity
+### 2.1 Capture: `PcaFrameSource`
+- Source: `PassthroughCameraAccess` (Meta MRUK), left RGB camera at 1280 × 960, with the real per-device **intrinsics** (focal length, principal point, sensor crop) and the **camera pose at the image timestamp**.
+- The image is copied with a non-blocking `AsyncGPUReadback`. Meta documents that blocking copies return the *previous* frame.
+- Each image is stored in a `FrameContext` together with its own `CameraModel` (pose + intrinsics). Every later geometric step uses that exact model, never "the current head pose".
+
+### 2.2 Detection: `ObjectronDetector` (MediaPipe Objectron, via the homuler MediaPipeUnityPlugin)
+- Two-stage model: an SSD (Open Images) finds a 2D crop, then a landmark network regresses the **9 projected keypoints of the object's 3D bounding box** (centre + 8 corners).
+- **One frame in flight.** The next image is submitted only after the previous result arrives, so each result is paired with the exact pose of its image.
+- The image is fed **unmirrored and upright**. Keypoints map to viewport as `(x, 1 − y)`.
+- Objectron's own "lifted" 3D output is **not used for geometry**: its EPnP lift is only up to scale and assumes a phone camera. It is used for exactly one thing: voting which keypoint axis is "up" and scoring how upright the model thinks the object is.
+- Objectron leaves every keypoint `id` at 0, so keypoints are indexed by list order.
+- Runs on GPU at ~10–13 Hz, ~50 ms per inference on Quest 3.
+
+### 2.3 Support plane from depth: `SupportPlaneEstimator`, `FloorEstimator`
+**Yes, depth is used to localise the boxes**, not just to draw them. The Depth API (`EnvironmentRaycastManager`) answers "where does this ray hit the real world?". We use it in three ways:
+
+1. **Floor model.** A few rays per second are cast down and ahead of the head. Hits on horizontal surfaces (normal·up > 0.9) build a robust running estimate of the floor height (low-percentile cluster + median, ±σ).
+2. **Local support surface.** For each detection, rays are cast through the object's 4 bottom-corner keypoints and a few points under its footprint. The lowest consistent cluster of hits is the surface the object stands on (a floor, or a table for cups/cameras).
+3. **Occlusion check.** When a tracked object should be visible but isn't detected, a depth ray checks whether something is in front of it before counting a "miss".
+
+For floor objects (chair, shoe), the floor model and the local estimate are fused when they agree within 8 cm. Otherwise the floor model wins, because local rays often hit the object's own legs or seat.
+
+**Why this matters.** A single image can't tell a small near chair from a large far one. Knowing the height of the plane the object stands on removes that ambiguity: the rays through the bottom corners must hit that plane, which fixes the box in metres.
+
+Depth is **not** currently used to measure the object's own surface (e.g. a point cloud inside the box), and boxes are **not occluded** by real objects when rendered. Both are listed under [Next steps](#7-next-steps).
+
+### 2.4 Metric box fit: `BoxSolver`
+Unknowns: footprint centre (x, z), heading (yaw), width, depth, height, and support height y₀. Seven parameters; the box is constrained to be upright.
+
+1. **Initialise.**
+   - Intersect the 4 bottom-corner keypoint rays with the plane y = y₀. This gives a metric footprint, yaw, width, depth, and the corner handedness (which side is +x).
+   - Height comes from matching the top-corner rays with vertical lines through the footprint corners.
+2. **Refine** with Levenberg–Marquardt. It minimises the reprojection error of all 9 keypoints through the real PCA camera model:
+   - Huber loss with a threshold of 4% of the object's on-screen size, so one bad keypoint can't drag the box.
+   - A soft prior keeps y₀ near the depth-measured support height (weight from its σ).
+3. **Outputs:**
+   - the box (`UprightBox`: bottom centre, yaw, size);
+   - RMS reprojection error in px **and** as a fraction of the object's on-screen size;
+   - the inlier fraction;
+   - the fitted 3D keypoints (cyan in the debug view).
+
+Because every corner keypoint has a fixed identity (front-left-bottom, etc.), yaw is determined without the 90°/180° ambiguity v1 had.
+
+Synthetic test (200 random views, 3 px keypoint noise, ±1 cm floor noise): position error ~1–2 cm, yaw < 2°, size ~1 cm.
+
+### 2.5 Per-frame quality: `ConfidenceModel.ObservationQuality`
+Each fit gets a quality q ∈ [0, 1], the product of six terms:
+
+| Term | Meaning | Shape |
+|---|---|---|
+| reprojection | Does the fitted 3D box re-project onto the network's keypoints? | Gaussian of (RMS ÷ on-screen size), σ = 8 %, × inlier fraction |
+| support | How well is the floor/table height measured? | Gaussian of depth σ; × fraction of rays that hit |
+| gravity | Does the network's own 3D axis agree the object is upright? | rescaled \|cos(up, world-up)\| |
+| size | Is the metric size plausible for the category? | 1 inside the category's range, Gaussian fall-off outside |
+| distance | Pixels on target | 1 for 0.45–2.8 m, decays beyond |
+| model | Detector score, when provided | clamp |
+
+On device this is typically 0.85–0.95 for a chair at 1–2 m (RMS ≈ 3% of the box's on-screen size).
+
+### 2.6 Multi-view fusion and tracking: `ObjectTracker`, `TrackedObject`
+- **Association:** a new fit joins the nearest existing track of the same category within a gate (~60% of the footprint + 2σ). Otherwise it starts a new candidate track.
+- **Fusion (per track, up to 40 views):**
+  - weights = q × time decay (30 s);
+  - outlier rejection on position (2.5 × robust spread) and yaw (35°);
+  - weighted mean position and size;
+  - circular mean of yaw (modulo 180° for symmetric categories such as cups).
+- **Moved objects:** 6 consecutive views that disagree with the fused position drop the old history, and the box re-snaps.
+- **Lifecycle:**
+  - a candidate is **confirmed** at confidence ≥ 0.55 with ≥ 4 views;
+  - a candidate unseen for 4 s is dropped;
+  - a confirmed object is removed after 4 s below 0.18 confidence, e.g. when it keeps not being detected where it should be visible.
+- Duplicate tracks that converge are merged.
+
+### 2.7 Object confidence
 ```
+C = evidence × quality^0.35 × consistency × agreement × viewpoints × presence
+```
+| Factor | What it measures |
+|---|---|
+| evidence | 1 − exp(−Σq / 1.2): how much good evidence exists |
+| quality | mean per-frame quality |
+| consistency | standard error of the fused position (σ/√n, scale 3.5 cm), yaw (8°) and size (7%) |
+| agreement | (inlier fraction)^1.5: do the views agree? |
+| viewpoints | 0.85 → 1.0 as the views span 25° around the object |
+| presence | 1 / (1 + 0.15 × misses): seen when it should be? |
 
-| Tag | Meaning |
-|-----|---------|
-| `BOOT` | Bootstrap, session cleanup, placement options |
-| `DETECT` | Inference, `cup_localized`, `cup_size_refined`, `cup_scan_reset` |
-| `WORLD` | Placement method per object id |
-| `VIZ` | Wireframe counts |
-| `ERR` | Errors |
+**±cm** = √(σ_pos²/n + 2·σ_floor² + 0.8 cm²). That's the statistical error of the fused centre plus the effect of floor-height error, which slides the box along the viewing ray.
 
-Useful strings: `cup_localized`, `cup_size_refined`, `cup_scan_reset`, `objectron_session_cleanup`, `cup_detection_shutdown`, `box_debug_shutdown`.
+In simulation with Objectron-like noise, a chair confirms at ~57%, rises to ~86% as you move around it, and falls to ~10% within a few seconds once it stops being seen. Clean data reaches ~98%.
 
----
+> **Important:** C is a principled but *heuristic* score, **not yet a calibrated probability**. To make "90%" mean "right 90% of the time", record (C, measured error) pairs against tape-measured ground truth and fit a calibration curve (isotonic / Platt). See [Next steps](#7-next-steps).
 
-## Key scripts
-
-| Script | Role |
-|--------|------|
-| `ObjectronCupDetectionManager.cs` | Cup scan, localize, size refinement, session shutdown |
-| `ObjectronBoxDebugManager.cs` | Box Debug latch + capture/localize |
-| `ObjectronWorldPlacement.cs` | Camera → world corners, depth refinement |
-| `ObjectronWorldOrientation.cs` | Roll compensation, gravity align, upright-on-table |
-| `ObjectronFramePoseQueue.cs` | Frame/pose pairing for async inference |
-| `ObjectronCupSizeFit.cs` | Reference mug size scoring |
-| `ObjectronSessionCleanup.cs` | Menu exit / fresh session |
-| `ObjectronQuestVisuals.cs` | Green wireframes (cup mode) |
-| `ObjectronLabeledBoxVisuals.cs` | Labeled wireframe (Box Debug) |
-| `ObjectronLocalizedCupState.cs` | Runtime cup track (not Unity-serialized) |
+### 2.8 Rendering: `BoxVisual`, `HudPanel`, `DebugOverlay`
+- **Box:** a procedural mesh (no LineRenderers) with thin edges, bold corner brackets, faint faces and a brighter footprint. The shader is a custom unlit transparent shader with single-pass-instanced stereo.
+- **Smoothing:** displayed pose and size go through a **One-Euro filter** (Casiez et al., 2012), which is stable when still and fast when the object really moves. Label text updates at 4 Hz.
+- **Anchoring:** each confirmed object gets an **`OVRSpatialAnchor`**, so its box stays locked to the room if head tracking re-localises.
+- **Label:** billboarded, scaled with distance, with a confidence bar.
 
 ---
 
-## Packages
+## 3. Code map
 
-- Meta MRUK, Meta OpenXR, Passthrough Camera API samples
-- `com.github.homuler.mediapipe` v0.11.0 (local package under `Packages/`)
+```
+Assets/QuestDetect3D/
+  Runtime/
+    Detect3DApp.cs               orchestrator: capture → detect → fit → track → render, input, HUD, heartbeat log
+    Core/        CameraModel (PCA pinhole, mirrors MRUK maths), UprightBox, ObjectCategory (+ size priors),
+                 OneEuroFilter, Log (logcat + on-headset log file)
+    Detection/   DetectionTypes (detector-agnostic KeypointDetection), PcaFrameSource, PcaImageSource,
+                 ObjectronDetector
+    Geometry/    BoxSolver (init + Levenberg–Marquardt), SupportPlaneEstimator + FloorEstimator (Depth API)
+    Tracking/    ConfidenceModel, TrackedObject (fusion), ObjectTracker (association, lifecycle)
+    Visuals/     BoxVisual, HudPanel, DebugOverlay, MeshUtil
+  Editor/        SceneBuilder (builds the scene from Meta's MultiObjectDetection template), BuildScript (batch build)
+  Shaders/       QD3D_UnlitTransparent.shader
+```
+Everything downstream of detection only consumes `KeypointDetection` (9 box keypoints in viewport coordinates + an optional up-axis hint). **Swapping the model** (CenterPose, a custom network) means writing one new detector class.
 
 ---
 
-## Troubleshooting
+## 4. Build and run (Windows)
 
-| Symptom | Check |
-|---------|--------|
-| No detections | Cup ~0.5–1.5 m, good lighting; logcat `DETECT empty` |
-| Box tilted with head | `CompensateHeadRoll` + `ConstrainUprightOnTable` enabled (cup mode defaults) |
-| Box faces you when walking around | Rebuild with cup mode (mask aligned disabled); boxes must be localized, not live-tracked |
-| Box offset in depth | Grant spatial permission for MRUK raycast |
-| Boxes persist after menu | Ensure latest build with `ObjectronSessionCleanup` |
-| Detection only at odd angles | Adjust `PassthroughImageSource` rotation (see `README_OBJECTRON.md`) |
-| Build error `LocalizedCup` serialization | Runtime state uses `ObjectronLocalizedCupState` + `[NonSerialized]` lists |
+Requirements:
+- Unity **6000.2.13f1** with Android Build Support.
+- Quest 3/3S on Horizon OS v74+, developer mode, USB.
+- `Packages/com.github.homuler.mediapipe-0.11.0.tgz`, the [MediaPipeUnityPlugin v0.11.0 release tarball](https://github.com/homuler/MediaPipeUnityPlugin/releases/tag/v0.11.0) (~500 MB, not in git). Put it in `Packages/`.
+
+| Script | What it does |
+|---|---|
+| `BuildAndDeploy.bat` | Builds `Builds/QuestDetect3D.apk` (batch mode), installs it with permissions granted (`-g`), launches it, saves 40 s of logcat |
+| `DeployOnly.bat` | Reinstalls and launches the last APK |
+| `PullLog.bat` | Copies the app's own session log (`Builds/app_log.txt`, plus the previous session) |
+| `DumpLog.bat` | Saves the Unity logcat to `Builds/device_log.txt` |
+| `BuildWatcher.bat` | Leave it running; creating `Builds/trigger_build` / `trigger_deploy` / `trigger_pull` runs the matching step |
+
+The first build imports the project (10–30 min); later builds take ~1 min. In the Editor, **QuestDetect3D → Rebuild Scene / Build APK** does the same.
+
+Package name: `com.amplilab.questdetect3d`.
+
+### Logs
+Every app line starts with `[QD3D]`. A `status` line is written every 3 s with detector Hz and ms, detections, fits ok/failed with the last rejection reason, floor, and tracks. There is a `fit` line per second (box, reprojection error, layout, support, quality breakdown) and `track_new / track_confirmed / track_relocated / track_removed` events with the confidence breakdown.
 
 ---
 
-## License
+## 5. Measured on device (8 Nov 2026, Quest 3, office with chairs)
 
-Based on [Meta Unity Passthrough Camera API Samples](https://github.com/oculus-samples/Unity-PassthroughCameraApiSamples) and [MediaPipe Unity Plugin](https://github.com/homuler/MediaPipeUnityPlugin). See respective licenses in those projects.
+| | |
+|---|---|
+| Objectron rate / latency | 10–13 Hz / ~50 ms |
+| Frames with a detection while looking at chairs | ~98% |
+| Successful metric fits | 99–100% of detections (remaining failures: feet out of view) |
+| Per-frame reprojection error | 2.5–3.7% of on-screen box size |
+| Typical chair boxes | 46–55 × 55–59 × 79–88 cm, ±2–3 cm |
+| Confidence at confirmation → after moving around | ~57–79% → up to ~85–90% |
+| Simultaneous chairs | 4 confirmed at once |
+
+---
+
+## 6. What changed from v1
+
+| v1 problem | v2 |
+|---|---|
+| Image fed mirrored, 3D converted with a Y+Z flip, so 3D was rotated 180° about the view axis and **yaw was mirrored** | Unmirrored image, one correct convention `(x, y, −z)`; lifted 3D used only to vote the up axis |
+| Objectron 3D is up to scale and uses phone intrinsics (needed ~2× fudge factors) | Box solved in metres from 2D keypoints + real PCA intrinsics + depth-measured support plane |
+| Box centred on a depth hit on the front surface (or behind the chair) | Footprint from bottom-corner rays on the support plane; LM over all 9 keypoints |
+| Yaw from "the longer edge": random 90°/180° flips; mesh orientation unusable | Yaw from labelled corners |
+| Floor snap rewrote the box centre and rejected boxes > 8 cm off | Support height is a fit parameter with a depth prior |
+| FIFO pose queue paired results with the wrong (older) frame | One frame in flight; each result carries its own camera model |
+| "Head-roll compensation" injected an error equal to the roll | True camera pose |
+| Box frozen on the first frame | Robust multi-view fusion, moved-object handling |
+| No anchors, LineRenderer wireframes, ~70 scripts, 5 scenes | Spatial anchors, procedural box mesh + One-Euro smoothing, 18 scripts, 1 scene |
+
+---
+
+## 7. Next steps
+
+1. **Calibrate confidence**: log (C, ground-truth error) and fit a calibration curve so the % is a real probability.
+2. **Depth inside the box**: sample the depth map inside the fitted footprint to verify and refine extents. This is also an extra confidence term.
+3. **Occlusion-aware rendering** with the environment depth texture.
+4. **Better/more general models**: any 3D-box keypoint model plugs into `KeypointDetection`. Options:
+   - CenterPose (GPU);
+   - a custom Objectron-style head for more classes;
+   - class-agnostic "2D detector + depth point-cloud box" for arbitrary objects.
+5. Persist anchors across sessions.
+
+## Credits
+- MediaPipe Objectron (Google) via [homuler/MediaPipeUnityPlugin](https://github.com/homuler/MediaPipeUnityPlugin).
+- Meta [Passthrough Camera API samples](https://github.com/oculus-samples/Unity-PassthroughCameraApiSamples) and MRUK.
+- One-Euro filter: Casiez, Roussel & Vogel, CHI 2012.

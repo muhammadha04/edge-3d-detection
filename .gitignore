@@ -5,28 +5,11 @@
 [Bb]uilds/
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
-[Mm]emoryCaptures/
-[Rr]ecordings/
-*.apk
-*.aab
-*.unitypackage
+.vs/
+.utmp/
 *.csproj
 *.sln
-*.suo
-*.user
-*.userprefs
-*.pidb
-*.booproj
-*.svd
-*.pdb
-*.mdb
-*.opendb
-*.VC.db
-.DS_Store
-Thumbs.db
-Assets/_Recovery/
-.utmp/
-
-# MediaPipe native binaries (>100MB) — run install_mediapipe.ps1 after clone
-Packages/com.github.homuler.mediapipe/
+*.apk
+*.aab
+# MediaPipe Unity plugin tarball (~500 MB): see README
 Packages/*.tgz
