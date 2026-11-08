@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using Meta.XR.Samples;
 using PassthroughCameraSamples.MultiObjectDetection;
-using QuestObjectron;
 using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -58,6 +57,7 @@ namespace PassthroughCameraSamples.StartScene
             if (questToolScenes.Count > 0)
             {
                 _ = uiBuilder.AddLabel("Quest Objectron / Tools", DebugUIBuilder.DEBUG_PANE_LEFT);
+                
                 foreach (var scene in questToolScenes)
                 {
                     var label = Path.GetFileNameWithoutExtension(scene.Item2);
@@ -65,9 +65,21 @@ namespace PassthroughCameraSamples.StartScene
                     {
                         label = "Environment Depth (live)";
                     }
+                    else if (label.Contains("ObjectronChairDetection"))
+                    {
+                        label = "Chair Detection (auto scan)";
+                    }
                     else if (label.Contains("ObjectronBoxDebug"))
                     {
                         label = "Box Debug (snapshot)";
+                    }
+                    else if (label.Contains("ObjectronScanCalibration"))
+                    {
+                        label = "Scan Calibration (align mesh)";
+                    }
+                    else if (label.Contains("Objectron2DDebug"))
+                    {
+                        label = "2D Model Debug (no 3D)";
                     }
 
                     _ = uiBuilder.AddButton(label, () => LoadScene(scene.Item1), -1, DebugUIBuilder.DEBUG_PANE_LEFT);
@@ -110,10 +122,7 @@ namespace PassthroughCameraSamples.StartScene
         {
             DebugUIBuilder.Instance.Hide();
             var path = SceneUtility.GetScenePathByBuildIndex(idx);
-            if (IsObjectronToolScene(path))
-            {
-                ObjectronSessionCleanup.BeginFreshSession();
-            }
+            
 
             Debug.Log("Load scene: " + idx);
             SceneManager.LoadScene(idx);
@@ -121,5 +130,7 @@ namespace PassthroughCameraSamples.StartScene
 
         private static bool IsObjectronToolScene(string scenePath) =>
             scenePath.Contains("ObjectronDetection") || scenePath.Contains("EnvironmentDepth");
+
+        
     }
 }

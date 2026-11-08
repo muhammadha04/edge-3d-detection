@@ -2,7 +2,6 @@
 // Original Source code from Oculus Starter Samples (https://github.com/oculus-samples/Unity-StarterSamples)
 
 using Meta.XR.Samples;
-using QuestObjectron;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -31,7 +30,6 @@ namespace PassthroughCameraSamples.StartScene
             if (OVRInput.GetUp(OVRInput.Button.Start)
                 && Time.realtimeSinceStartup - m_sceneEnterTime > 1.5f)
             {
-                ObjectronSessionCleanup.LeaveObjectronScene();
                 SceneManager.LoadScene(0);
             }
 

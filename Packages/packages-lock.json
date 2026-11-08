@@ -1,9 +1,9 @@
 {
   "dependencies": {
     "com.github.homuler.mediapipe": {
-      "version": "file:com.github.homuler.mediapipe",
+      "version": "file:com.github.homuler.mediapipe-0.11.0.tgz",
       "depth": 0,
-      "source": "embedded",
+      "source": "local-tarball",
       "dependencies": {}
     },
     "com.meta.xr.mrutilitykit": {
