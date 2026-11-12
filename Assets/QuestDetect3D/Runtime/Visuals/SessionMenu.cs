@@ -1,4 +1,4 @@
-// In-headset start menu (controllers): choose the display mode and the minimum confidence to show a box.
+// In-headset start menu (controllers): choose Detect or Annotate, the display mode and the minimum confidence to show a box.
 //   Thumbstick up/down   select row
 //   Thumbstick left/right change value
 //   A / right trigger    start a new session (clears all objects)
@@ -15,7 +15,7 @@ namespace QuestDetect3D
         private const float StickThreshold = 0.6f;
         private const float RepeatDelay = 0.35f;
         private const float RepeatRate = 0.12f;
-        private const int RowCount = 5;
+        private const int RowCount = 6;
 
         private Transform m_head;
         private TextMesh m_title;
@@ -46,10 +46,10 @@ namespace QuestDetect3D
             menu.m_head = head;
             menu.m_settings = settings;
             menu.m_block = new MaterialPropertyBlock();
-            menu.m_plate = MeshUtil.CreateMeshObject(go.transform, "Plate", MeshUtil.CreateRect(0.66f, 0.46f), material,
+            menu.m_plate = MeshUtil.CreateMeshObject(go.transform, "Plate", MeshUtil.CreateRect(0.66f, 0.52f), material,
                 new Vector3(0f, 0f, 0.004f));
             MeshUtil.SetColor(menu.m_plate, menu.m_block, new Color(0.03f, 0.04f, 0.06f, 0.86f));
-            menu.m_title = MeshUtil.CreateText(go.transform, "Title", font, 0.03f, new Vector3(0f, 0.19f, 0f),
+            menu.m_title = MeshUtil.CreateText(go.transform, "Title", font, 0.03f, new Vector3(0f, 0.22f, 0f),
                 Color.white);
             menu.m_body = MeshUtil.CreateText(go.transform, "Body", font, 0.019f, new Vector3(-0.30f, -0.03f, 0f),
                 Color.white, TextAnchor.MiddleLeft);
@@ -95,7 +95,7 @@ namespace QuestDetect3D
             if (OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch) ||
                 OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, OVRInput.Controller.RTouch))
             {
-                if (m_row < 3)
+                if (m_row < 4)
                 {
                     Navigate(new Vector2Int(1, 0));
                 }
@@ -118,17 +118,20 @@ namespace QuestDetect3D
                 switch (m_row)
                 {
                     case 0:
+                        m_settings.AppMode = m_settings.AppMode == AppMode.Detect ? AppMode.Annotate : AppMode.Detect;
+                        break;
+                    case 1:
                         m_settings.Detector = m_settings.Detector == DetectorKind.YoloDepth
                             ? DetectorKind.Objectron
                             : DetectorKind.YoloDepth;
                         break;
-                    case 1:
+                    case 2:
                         m_settings.Backend = m_settings.Backend == InferenceBackend.Gpu ? InferenceBackend.Cpu : InferenceBackend.Gpu;
                         break;
-                    case 2:
+                    case 3:
                         ToggleMode();
                         break;
-                    case 3:
+                    case 4:
                         m_settings.StepMinConfidence(dir.x);
                         break;
                 }
@@ -171,31 +174,37 @@ namespace QuestDetect3D
             }
 
             var yolo = m_settings.Detector == DetectorKind.YoloDepth;
-            m_sb.Append(m_row == 0 ? sel : off).Append("Detector:  <b>< ")
+            var annotate = m_settings.AppMode == AppMode.Annotate;
+            m_sb.Append(m_row == 0 ? sel : off).Append("Mode:  <b>< ").Append(annotate ? "Annotate" : "Detect").Append(" ></b></color>\n");
+            m_sb.Append(hintOpen)
+                .Append(annotate ? "ground truth: rooms, objects, manual boxes, recording (rows below: Detect only)" : "live 3D detection")
+                .Append(hintClose);
+
+            m_sb.Append(m_row == 1 ? sel : off).Append("Detector:  <b>< ")
                 .Append(yolo ? "YOLO + depth" : "Objectron (chairs)").Append(" ></b></color>\n");
             m_sb.Append(hintOpen)
                 .Append(yolo ? "chairs, sofas, tables, beds, plants, screens... boxed from Quest depth"
                     : "v2 baseline: chair keypoints + box solver")
                 .Append(hintClose);
 
-            m_sb.Append(m_row == 1 ? sel : off).Append("Inference:  <b>< ")
+            m_sb.Append(m_row == 2 ? sel : off).Append("Inference:  <b>< ")
                 .Append(m_settings.Backend == InferenceBackend.Gpu ? "GPU" : "CPU").Append(" ></b></color>\n");
             m_sb.Append(hintOpen).Append(yolo ? "YOLO backend (switch if GPU misbehaves)" : "not used by Objectron").Append(hintClose);
 
             var modeName = m_settings.ShowScan ? "3D scan + keypoints" : "Box";
-            m_sb.Append(m_row == 2 ? sel : off).Append("Display:  <b>< ").Append(modeName).Append(" ></b></color>\n");
+            m_sb.Append(m_row == 3 ? sel : off).Append("Display:  <b>< ").Append(modeName).Append(" ></b></color>\n");
             m_sb.Append(hintOpen)
                 .Append(m_settings.ShowScan ? "lab-chair scan in chair boxes + debug points/keypoints"
                     : "3D box sized by uncertainty, with label")
                 .Append(hintClose);
 
             var pct = Mathf.RoundToInt(m_settings.MinConfidence * 100f);
-            m_sb.Append(m_row == 3 ? sel : off).Append("Show boxes from:  <b>< ").Append(pct).Append("% ></b></color>\n");
+            m_sb.Append(m_row == 4 ? sel : off).Append("Show boxes from:  <b>< ").Append(pct).Append("% ></b></color>\n");
             m_sb.Append(hintOpen)
                 .Append(pct >= 55 ? "only confirmed objects (confirmation at 55%)" : "also shows unconfirmed candidates")
                 .Append(hintClose);
 
-            m_sb.Append(m_row == 4 ? sel : off).Append("<b>Start</b></color>\n");
+            m_sb.Append(m_row == 5 ? sel : off).Append(annotate ? "<b>Start annotating</b></color>\n" : "<b>Start</b></color>\n");
             m_sb.Append("<size=40><color=#8A96A3>Stick: select / change    A: change / start    In session, A: this menu</color></size>");
             m_body.text = m_sb.ToString();
         }

@@ -1,0 +1,6 @@
+<linker>
+  <!-- QD3D Annotate data classes are (de)serialised by Newtonsoft JSON through reflection: keep every member. -->
+  <assembly fullname="Assembly-CSharp">
+    <namespace fullname="QuestDetect3D.Annotation" preserve="all" />
+  </assembly>
+</linker>

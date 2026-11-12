@@ -7,6 +7,7 @@
 //      uint8 .sentis and our own FP32 / FP16 / uint8 exports. Proves the model loads, the output layout/decoding
 //      and top-left → viewport conversion are right, and measures what weight quantisation costs (RQ1).
 //      The FP16 export (what the app ships) must pass.
+//   3. QD3D Annotate pure logic (Tests/AnnotationTests): JSON persistence, ids, box conversion.
 // Writes Builds/selftest.txt. Never throws into the build.
 using System;
 using System.Collections.Generic;
@@ -71,7 +72,10 @@ namespace QuestDetect3D.EditorTools
                 }
             }
 
-            var total = pipeline.Failed + failed;
+            sb.AppendLine("--- 3. QD3D Annotate logic ---");
+            var annotation = AnnotationTests.RunAll();
+            sb.Append(annotation);
+            var total = pipeline.Failed + failed + annotation.Failed;
             sb.AppendLine(total == 0 ? "SELFTEST OK" : $"SELFTEST FAILED ({total} failures)");
             return sb.ToString();
         }

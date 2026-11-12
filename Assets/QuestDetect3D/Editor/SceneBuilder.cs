@@ -8,10 +8,13 @@ using System.Linq;
 using Mediapipe.Unity;
 using Mediapipe.Unity.Objectron;
 using Meta.XR;
+using Oculus.Interaction;
+using QuestDetect3D.Annotation;
 using Unity.InferenceEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace QuestDetect3D.EditorTools
 {
@@ -166,6 +169,7 @@ namespace QuestDetect3D.EditorTools
             aso.FindProperty("m_yoloModel").objectReferenceValue = yoloModel;
             aso.FindProperty("m_yoloLabels").objectReferenceValue = yoloLabels;
             aso.FindProperty("m_overlayShader").objectReferenceValue = AssetDatabase.LoadAssetAtPath<Shader>(ShaderPath);
+            aso.FindProperty("m_annotate").objectReferenceValue = BuildAnnotateMode();
             aso.ApplyModifiedPropertiesWithoutUndo();
 
             if (AssetDatabase.LoadAssetAtPath<Shader>(ShaderPath) == null)
@@ -179,6 +183,24 @@ namespace QuestDetect3D.EditorTools
 
             var roots = string.Join(", ", scene.GetRootGameObjects().Select(r => r.name));
             Debug.Log($"QuestDetect3D: scene built at {ScenePath} roots=[{roots}]");
+        }
+
+        /// <summary>QD3D Annotate: the mode controller plus an EventSystem with the Interaction SDK canvas module
+        /// (inactive until Annotate is started, so Detect mode runs exactly as before). Panels and controller
+        /// rays are created from code at runtime.</summary>
+        private static AnnotationMode BuildAnnotateMode()
+        {
+            var go = new GameObject("QD3D Annotate");
+            var mode = go.AddComponent<AnnotationMode>();
+            var eventSystemGo = new GameObject("EventSystem");
+            eventSystemGo.transform.SetParent(go.transform, false);
+            eventSystemGo.AddComponent<EventSystem>();
+            eventSystemGo.AddComponent<PointableCanvasModule>();
+            eventSystemGo.SetActive(false);
+            var mso = new SerializedObject(mode);
+            mso.FindProperty("m_eventSystem").objectReferenceValue = eventSystemGo;
+            mso.ApplyModifiedPropertiesWithoutUndo();
+            return mode;
         }
 
         private static TextAsset LoadText(string file)

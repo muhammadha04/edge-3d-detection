@@ -2,6 +2,9 @@
   "dependencies": {
     "com.github.homuler.mediapipe": "file:com.github.homuler.mediapipe-0.11.0.tgz",
     "com.meta.xr.mrutilitykit": "85.0.0",
+    "com.meta.xr.sdk.interaction": "85.0.0",
+    "com.meta.xr.sdk.interaction.ovr": "85.0.0",
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
     "com.unity.xr.meta-openxr": "2.1.1",
     "com.unity.feature.development": "1.0.2",
     "com.unity.mobile.android-logcat": "1.4.6",

@@ -20,6 +20,14 @@ namespace QuestDetect3D
         Objectron,
     }
 
+    public enum AppMode
+    {
+        /// <summary>Live 3D detection (the original app).</summary>
+        Detect,
+        /// <summary>QD3D Annotate: manual ground truth, recording, export.</summary>
+        Annotate,
+    }
+
     public enum InferenceBackend
     {
         Gpu,
@@ -37,6 +45,9 @@ namespace QuestDetect3D
         private const string KeyMinConf = "qd3d.minConfidence";
         private const string KeyDetector = "qd3d.detector";
         private const string KeyBackend = "qd3d.backend";
+        private const string KeyAppMode = "qd3d.appMode";
+
+        public AppMode AppMode = AppMode.Detect;
 
         public DetectorKind Detector = DetectorKind.YoloDepth;
         public InferenceBackend Backend = InferenceBackend.Gpu;
@@ -56,6 +67,7 @@ namespace QuestDetect3D
                 MinConfidence = PlayerPrefs.GetFloat(KeyMinConf, DefaultMinConfidence),
                 Detector = (DetectorKind)Mathf.Clamp(PlayerPrefs.GetInt(KeyDetector, 0), 0, 1),
                 Backend = (InferenceBackend)Mathf.Clamp(PlayerPrefs.GetInt(KeyBackend, 0), 0, 1),
+                AppMode = (AppMode)Mathf.Clamp(PlayerPrefs.GetInt(KeyAppMode, 0), 0, 1),
             };
             s.MinConfidence = Snap(s.MinConfidence);
             return s;
@@ -67,6 +79,7 @@ namespace QuestDetect3D
             PlayerPrefs.SetFloat(KeyMinConf, MinConfidence);
             PlayerPrefs.SetInt(KeyDetector, (int)Detector);
             PlayerPrefs.SetInt(KeyBackend, (int)Backend);
+            PlayerPrefs.SetInt(KeyAppMode, (int)AppMode);
             PlayerPrefs.Save();
         }
 
@@ -81,6 +94,6 @@ namespace QuestDetect3D
             return Mathf.Round(v / MinConfidenceStep) * MinConfidenceStep;
         }
 
-        public override string ToString() => $"detector={Detector} backend={Backend} mode={Mode} min_conf={MinConfidence:F2}";
+        public override string ToString() => $"app_mode={AppMode} detector={Detector} backend={Backend} mode={Mode} min_conf={MinConfidence:F2}";
     }
 }

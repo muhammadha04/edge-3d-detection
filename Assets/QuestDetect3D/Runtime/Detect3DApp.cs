@@ -17,6 +17,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using Meta.XR;
+using QuestDetect3D.Annotation;
 using Unity.Collections;
 using Unity.InferenceEngine;
 using UnityEngine;
@@ -32,6 +33,7 @@ namespace QuestDetect3D
         [SerializeField] private TextAsset m_yoloLabels;
         [SerializeField] private Shader m_overlayShader;
         [SerializeField] private bool m_useSpatialAnchors = true;
+        [SerializeField] private AnnotationMode m_annotate;
 
         private readonly ObjectTracker m_tracker = new ObjectTracker();
         private readonly FloorEstimator m_floor = new FloorEstimator();
@@ -110,6 +112,11 @@ namespace QuestDetect3D
             m_settings = AppSettings.Load();
             m_menu = SessionMenu.Create(m_material, m_font, m_head, m_settings);
             m_menu.Started += OnSessionStart;
+            if (m_annotate != null)
+            {
+                m_annotate.ExitRequested += OnAnnotateExit;
+            }
+
             m_depth = new EnvironmentDepthRaycaster(m_raycast);
             if (m_yoloModel != null)
             {
@@ -165,12 +172,12 @@ namespace QuestDetect3D
         private void EnsureDetectorState()
         {
             var cameraReady = m_camera != null && m_camera.IsPlaying;
-            var wantObjectron = !MenuOpen && !UseYolo && cameraReady && m_detector != null;
+            var wantObjectron = !MenuOpen && !AnnotateActive && !UseYolo && cameraReady && m_detector != null;
             if (wantObjectron && m_detectorRoutine == null)
             {
                 StartDetector(ObjectCategory.Chair);
             }
-            else if (!wantObjectron && m_detectorRoutine != null && UseYolo)
+            else if (!wantObjectron && m_detectorRoutine != null && (UseYolo || AnnotateActive))
             {
                 StopCoroutine(m_detectorRoutine);
                 m_detector.StopGraph();
@@ -180,6 +187,9 @@ namespace QuestDetect3D
         }
 
         private bool MenuOpen => m_menu != null && m_menu.IsOpen;
+
+        /// <summary>Annotate mode is running: detection, its visuals and its controller shortcuts are off.</summary>
+        private bool AnnotateActive => m_annotate != null && m_annotate.IsActive;
 
         private void OpenMenu()
         {
@@ -191,6 +201,12 @@ namespace QuestDetect3D
 
         private void OnSessionStart()
         {
+            if (m_settings.AppMode == AppMode.Annotate && m_annotate != null)
+            {
+                EnterAnnotate();
+                return;
+            }
+
             if (m_yolo != null && UseYolo && m_yolo.Backend != ToBackend(m_settings.Backend))
             {
                 if (m_yoloInit != null)
@@ -210,6 +226,33 @@ namespace QuestDetect3D
             Log.Info($"session_start {m_settings}");
         }
 
+        private void EnterAnnotate()
+        {
+            m_menu.Close();
+            m_tracker.Reset();
+            m_backrest.Clear();
+            m_debug.Enabled = false;
+            m_debug.Clear();
+            m_hud.SetVisible(false);
+            Log.Info($"annotate_start {m_settings}");
+            m_annotate.Enter(new AnnotationContext
+            {
+                Head = m_head,
+                Material = m_material,
+                Font = m_font,
+                Floor = m_floor,
+                Raycast = m_raycast,
+                Depth = m_depth,
+                Camera = m_camera,
+            });
+        }
+
+        private void OnAnnotateExit()
+        {
+            m_annotate.Exit();
+            OpenMenu();
+        }
+
         private void Update()
         {
             HandleInput();
@@ -217,13 +260,13 @@ namespace QuestDetect3D
             EnsureDetectorState();
             TrackHeadSpeed();
 
-            if (!UseYolo && !MenuOpen && m_frames != null && m_detector != null && m_detector.IsReady && !m_detector.IsBusy &&
+            if (!AnnotateActive && !UseYolo && !MenuOpen && m_frames != null && m_detector != null && m_detector.IsReady && !m_detector.IsBusy &&
                 !m_frames.IsPending && m_camera.IsUpdatedThisFrame)
             {
                 m_frames.TryCapture(OnFrameCaptured);
             }
 
-            if (UseYolo && !MenuOpen && m_yolo != null && m_yolo.IsReady && !m_yolo.IsBusy && m_frames != null &&
+            if (!AnnotateActive && UseYolo && !MenuOpen && m_yolo != null && m_yolo.IsReady && !m_yolo.IsBusy && m_frames != null &&
                 m_camera.IsUpdatedThisFrame && m_headSpeedDegPerSec < MaxHeadSpeedForCapture &&
                 m_frames.TryCurrentCameraModel(out var cam))
             {
@@ -291,7 +334,7 @@ namespace QuestDetect3D
             var detStatus = UseYolo
                 ? $"yolo={(m_yolo != null ? m_yolo.Status : "null")}/{m_yolo?.Backend} hz={m_yolo?.InferenceHz:F1} ms={m_yolo?.LastInferenceMs:F0}"
                 : $"objectron={(m_detector != null ? m_detector.Status : "null")} hz={m_detector?.InferenceHz:F1} ms={m_detector?.LastInferenceMs:F0}";
-            Log.Info($"status menu={MenuOpen} cam={(m_camera != null && m_camera.IsPlaying)} {detStatus} " +
+            Log.Info($"status menu={MenuOpen} annotate={AnnotateActive} cam={(m_camera != null && m_camera.IsPlaying)} {detStatus} " +
                      $"head={m_headSpeedDegPerSec:F0}deg/s frames={m_framesProcessed} raw_dets={m_rawDetections} " +
                      $"frames_with_dets={m_framesWithDetections} fits_ok={m_fitsOk} fits_failed={m_fitsFailed} " +
                      $"last_fail={m_lastFailReason} floor={(m_floor.HasFloor ? m_floor.FloorY.ToString("F2") : "none")}" +
@@ -595,9 +638,9 @@ namespace QuestDetect3D
 
         private void HandleInput()
         {
-            if (m_menu == null || MenuOpen)
+            if (m_menu == null || MenuOpen || AnnotateActive)
             {
-                return; // the menu reads the controllers itself
+                return; // the menu / the annotation mode read the controllers themselves
             }
 
             if (OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch) ||
@@ -633,7 +676,7 @@ namespace QuestDetect3D
 
         private void UpdateHud()
         {
-            if (m_hud == null || !m_hudVisible || MenuOpen)
+            if (m_hud == null || !m_hudVisible || MenuOpen || AnnotateActive)
             {
                 return;
             }
