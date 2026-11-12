@@ -1,0 +1,6 @@
+# QD3D Annotate PC tools (Python 3.10+):  pip install -r Tools/annotation/requirements.txt
+numpy>=1.24
+opencv-python>=4.8
+onnxruntime>=1.16
+matplotlib>=3.7
+pytest>=7.4
