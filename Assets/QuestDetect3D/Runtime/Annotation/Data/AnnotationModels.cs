@@ -88,8 +88,26 @@ namespace QuestDetect3D.Annotation
         /// <summary>Reference position of the drift cross in the room frame (first touch); null until set.</summary>
         [JsonProperty("drift_reference")] public float[] DriftReference;
         [JsonProperty("drift_checks")] public List<DriftCheck> DriftChecks = new List<DriftCheck>();
+        /// <summary>Every anchor this room ever had (re-placing the cross creates a new one; the old UUID is kept).</summary>
+        [JsonProperty("anchor_history")] public List<AnchorRecord> AnchorHistory = new List<AnchorRecord>();
+        /// <summary>A test box placed in the room frame to check that the frame is re-found after a restart.</summary>
+        [JsonProperty("test_box")] public BoxDto TestBox;
         [JsonProperty("notes")] public string Notes = "";
         [JsonProperty("created")] public string Created;
+    }
+
+    public sealed class AnchorRecord
+    {
+        [JsonProperty("uuid")] public string Uuid;
+        [JsonProperty("created")] public string Created;
+        /// <summary>The touched cross centre and arm point (world, at creation) that defined the frame.</summary>
+        [JsonProperty("centre_world")] public float[] CentreWorld;
+        [JsonProperty("arm_world")] public float[] ArmWorld;
+        /// <summary>When the cross was re-placed while the previous anchor was localised: where the new touch
+        /// landed in the OLD frame (position mm, yaw deg). Measures anchor + touch repeatability.</summary>
+        [JsonProperty("previous_frame_offset_mm")] public float[] PreviousFrameOffsetMm;
+        [JsonProperty("previous_frame_yaw_deg")] public float PreviousFrameYawDeg;
+        [JsonProperty("reason")] public string Reason;
     }
 
     // ------------------------------------------------------------------ annotations/<roomId>.json
@@ -129,6 +147,22 @@ namespace QuestDetect3D.Annotation
         [JsonProperty("point")] public float[] Point;
         /// <summary>Seconds since the annotation started.</summary>
         [JsonProperty("t")] public float T;
+        /// <summary>Replaced by a later touch of the same side (kept for the audit trail, not used for the box).</summary>
+        [JsonProperty("superseded")] public bool Superseded;
+        /// <summary>"tip" (M1 touch) or "ray_depth" / "ray_floor" (M2 point).</summary>
+        [JsonProperty("source")] public string Source;
+        [JsonProperty("controller")] public string Controller;
+    }
+
+    /// <summary>M4 Assisted: the detector track the box started from.</summary>
+    public sealed class AssistSource
+    {
+        [JsonProperty("track_id")] public int TrackId;
+        [JsonProperty("category")] public string Category;
+        [JsonProperty("confidence")] public float Confidence;
+        [JsonProperty("state")] public string State;
+        [JsonProperty("box_world")] public BoxDto BoxWorld;
+        [JsonProperty("detector_model")] public string DetectorModel;
     }
 
     public sealed class EditOp
@@ -151,6 +185,11 @@ namespace QuestDetect3D.Annotation
         [JsonProperty("tip_offset")] public float[] TipOffset;
         [JsonProperty("tip_is_default")] public bool TipIsDefault = true;
         [JsonProperty("controller")] public string Controller;
+        /// <summary>Where the bottom came from: "floor_estimator" (depth floor model) or "room_cross" (y = 0).</summary>
+        [JsonProperty("floor_source")] public string FloorSource;
+        [JsonProperty("assist_source")] public AssistSource AssistSource;
+        /// <summary>Head position (room frame) when the second front point was touched: decides which side is front.</summary>
+        [JsonProperty("front_hint")] public float[] FrontHint;
     }
 
     public sealed class Repetition
@@ -172,6 +211,10 @@ namespace QuestDetect3D.Annotation
         [JsonProperty("self_rating")] public int SelfRating;
         /// <summary>False when the operator discarded this repetition (kept on file, excluded from the mean).</summary>
         [JsonProperty("accepted")] public bool Accepted = true;
+        /// <summary>Anchor (room frame) the box was made in.</summary>
+        [JsonProperty("anchor_uuid")] public string AnchorUuid;
+        /// <summary>Recording session running while annotating, if any.</summary>
+        [JsonProperty("session_id")] public string SessionId;
     }
 
     public sealed class GtSigma
@@ -198,6 +241,8 @@ namespace QuestDetect3D.Annotation
         [JsonProperty("repetitions")] public List<Repetition> Repetitions = new List<Repetition>();
         /// <summary>Robust mean of the accepted, non-assisted repetitions; null until there is one.</summary>
         [JsonProperty("accepted")] public AcceptedBox Accepted;
+        /// <summary>Robust mean per method ("M1", "M2", "M4"): for comparing methods. M4 never becomes "accepted".</summary>
+        [JsonProperty("accepted_by_method")] public Dictionary<string, AcceptedBox> AcceptedByMethod = new Dictionary<string, AcceptedBox>();
         /// <summary>"ok", "redo" or null (not verified yet).</summary>
         [JsonProperty("verify")] public string Verify;
         [JsonProperty("verify_time")] public string VerifyTime;

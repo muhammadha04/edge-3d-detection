@@ -1,13 +1,16 @@
-// Screens of the Annotate panel (A0: Home, Room, Catalog, ground-truth rule). Each screen only describes its
-// content; AnnotationMode owns the data and rebuilds the screen after every change.
-using System.Collections.Generic;
+// Home, ground-truth rule and shared screen helpers of QD3D Annotate. Each screen only describes its content;
+// AnnotationMode owns the data and rebuilds the screen after every change (Refresh()).
+using System;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace QuestDetect3D.Annotation
 {
-    public sealed class HomeScreen : IAnnScreen
+    public sealed class HomeScreen : IAnnTickScreen
     {
         private readonly AnnotationMode m_mode;
+        private UnityEngine.UI.Text m_status;
+        private RoomFrameState m_lastState;
 
         public HomeScreen(AnnotationMode mode) => m_mode = mode;
 
@@ -16,133 +19,79 @@ namespace QuestDetect3D.Annotation
         public void Build(AnnPanel p)
         {
             var room = m_mode.CurrentRoom;
-            p.Label(room != null
-                    ? $"Room: <b>{room.Name}</b>   ({(string.IsNullOrEmpty(room.AnchorUuid) ? "room cross not placed yet" : "room cross placed")})"
-                    : "Room: <b>none</b>  -  create or select one first",
+            m_lastState = m_mode.Room.State;
+            p.Label(room != null ? $"Room: <b>{room.Name}</b>" : "Room: <b>none</b>  -  create or select one first",
                 AnnPanel.TextSize, room != null ? AnnPanel.TextColor : AnnPanel.Warning);
-            p.Label($"Objects in catalog: <b>{m_mode.Catalog.Objects.Count}</b>");
-            p.Space();
+            m_status = p.Label(RoomStatus(), 24, RoomColor());
+            p.Label($"Operator: <b>{m_mode.Operator}</b>     Objects: <b>{m_mode.Catalog.Objects.Count}</b>     Tip: {TipSummary()}", 24);
+            var rec = m_mode.Recorder;
+            if (rec.IsRecording)
+            {
+                p.Label($"<color=#FF6B6B>● RECORDING</color> {rec.SessionId}", 24);
+            }
 
             p.BeginRow();
             p.Button("Room", () => m_mode.Show(new RoomScreen(m_mode)), true, AnnPanel.PrimaryButton);
             p.Button("Catalog", () => m_mode.Show(new CatalogScreen(m_mode)), true, AnnPanel.PrimaryButton);
+            p.Button("Calibrate tip", () => m_mode.Show(new CalibrateScreen(m_mode)), true, AnnPanel.PrimaryButton);
+            p.EndRow();
+            var canAnnotate = m_mode.Room.HasFrame && m_mode.Catalog.Objects.Count > 0;
+            p.BeginRow();
+            p.Button("Annotate", () => m_mode.Show(new AnnotateSetupScreen(m_mode)), canAnnotate, AnnPanel.PrimaryButton);
+            p.Button("Verify", () => m_mode.Show(new VerifyScreen(m_mode)), m_mode.Room.HasFrame, AnnPanel.PrimaryButton);
             p.EndRow();
             p.BeginRow();
-            p.Button("Calibrate tip", null, false);
-            p.Button("Annotate", null, false);
+            p.Button("Record", () => m_mode.Show(new RecordScreen(m_mode)), m_mode.CurrentRoom != null, AnnPanel.PrimaryButton);
+            p.Button("Export", () => m_mode.Show(new ExportScreen(m_mode)));
             p.EndRow();
             p.BeginRow();
-            p.Button("Verify", null, false);
-            p.Button("Record", null, false);
-            p.Button("Export", null, false);
-            p.EndRow();
-            p.BeginRow();
-            p.Button("Ground-truth rule", () => m_mode.Show(new RuleScreen(m_mode)));
-            p.Button("Exit to start menu", m_mode.RequestExit, true, AnnPanel.DangerButton);
-            p.EndRow();
-            p.Space();
-            p.Label("Trigger = click.  Left Menu button = bring this panel in front of you.\nGrey buttons arrive in later milestones.",
-                22, AnnPanel.DimText);
-        }
-    }
-
-    public sealed class RoomScreen : IAnnScreen
-    {
-        private const int PageSize = 3;
-        private readonly AnnotationMode m_mode;
-        private int m_page;
-
-        public RoomScreen(AnnotationMode mode) => m_mode = mode;
-
-        public string Title => "Room";
-
-        public void Build(AnnPanel p)
-        {
-            var rooms = m_mode.Store.ListRooms();
-            var current = m_mode.CurrentRoom;
-            p.Label(current != null ? $"Current room: <b>{current.Name}</b>  (id {current.Id})" : "No room selected.",
-                AnnPanel.TextSize, current != null ? AnnPanel.TextColor : AnnPanel.Warning);
-            p.Label(rooms.Count == 0 ? "No rooms yet. Press New room." : $"{rooms.Count} room(s) saved. Select one:", 24, AnnPanel.DimText);
-
-            var pages = Mathf.Max(1, (rooms.Count + PageSize - 1) / PageSize);
-            m_page = Mathf.Clamp(m_page, 0, pages - 1);
-            for (var i = m_page * PageSize; i < Mathf.Min(rooms.Count, (m_page + 1) * PageSize); i++)
+            p.Button("Operator name", () => m_mode.Keyboard.Open("Operator name", m_mode.Calibration.Operator, false, name =>
             {
-                var room = rooms[i];
-                var isCurrent = current != null && current.Id == room.Id;
-                p.Button(isCurrent ? $"{room.Name}   [current]" : room.Name, () =>
+                if (string.IsNullOrEmpty(name))
                 {
-                    m_mode.SetRoom(room);
-                    m_mode.Refresh();
-                }, true, isCurrent ? AnnPanel.PrimaryButton : AnnPanel.ButtonColor);
+                    return;
+                }
+
+                m_mode.Calibration.Operator = name;
+                m_mode.SaveCalibration();
+                m_mode.Audit("operator_set", new JObject { ["operator"] = name });
+            }));
+            p.Button("Ground-truth rule", () => m_mode.Show(new RuleScreen(m_mode)));
+            p.Button("Exit", m_mode.RequestExit, true, AnnPanel.DangerButton);
+            p.EndRow();
+            if (!canAnnotate)
+            {
+                p.Label(m_mode.Room.HasFrame ? "Add an object in Catalog to annotate." : "Annotate needs a localised room frame (Room).",
+                    22, AnnPanel.Warning);
             }
 
-            Pager.Build(p, m_page, pages, delta =>
-            {
-                m_page += delta;
-                m_mode.Refresh();
-            });
-
-            p.Space();
-            p.BeginRow();
-            p.Button("New room", () =>
-            {
-                m_mode.NewRoom();
-                m_page = int.MaxValue; // jump to the page with the new room
-                m_mode.Refresh();
-            }, true, AnnPanel.PrimaryButton);
-            p.Button("Back", () => m_mode.Show(new HomeScreen(m_mode)));
-            p.EndRow();
-            p.Label("Automatic names for now (keyboard: next milestone). Room cross and drift check come with the room frame.",
-                22, AnnPanel.DimText);
+            p.Label("Trigger = click.  Left Menu = panel in front of you.  X = hide/show panel.", 22, AnnPanel.DimText);
         }
-    }
 
-    public sealed class CatalogScreen : IAnnScreen
-    {
-        private const int PageSize = 6;
-        private readonly AnnotationMode m_mode;
-        private int m_page;
-
-        public CatalogScreen(AnnotationMode mode) => m_mode = mode;
-
-        public string Title => "Catalog";
-
-        public void Build(AnnPanel p)
+        public void Tick()
         {
-            var objects = m_mode.Catalog.Objects;
-            p.Label(objects.Count == 0 ? "No objects yet. Press Add object." : $"{objects.Count} object(s):", 24, AnnPanel.DimText);
-
-            var pages = Mathf.Max(1, (objects.Count + PageSize - 1) / PageSize);
-            m_page = Mathf.Clamp(m_page, 0, pages - 1);
-            for (var i = m_page * PageSize; i < Mathf.Min(objects.Count, (m_page + 1) * PageSize); i++)
+            if (m_status != null)
             {
-                var o = objects[i];
-                var tape = o.TapeDimsCm != null && o.TapeDimsCm.IsSet
-                    ? $"{o.TapeDimsCm.W:0.#} x {o.TapeDimsCm.D:0.#} x {o.TapeDimsCm.H:0.#} cm"
-                    : "not measured";
-                var reps = m_mode.CurrentRoom != null ? $"{m_mode.RepetitionCount(o.Id)} annotation(s) in {m_mode.CurrentRoom.Name}" : "no room selected";
-                p.Label($"<b>{o.Name}</b>   {o.Category}   tape: {tape}   {reps}");
+                m_status.text = RoomStatus();
+                m_status.color = RoomColor();
             }
 
-            Pager.Build(p, m_page, pages, delta =>
+            if (m_mode.Room.State != m_lastState)
             {
-                m_page += delta;
                 m_mode.Refresh();
-            });
+            }
+        }
 
-            p.Space();
-            p.BeginRow();
-            p.Button("Add object", () =>
-            {
-                m_mode.NewObject();
-                m_page = int.MaxValue;
-                m_mode.Refresh();
-            }, true, AnnPanel.PrimaryButton);
-            p.Button("Back", () => m_mode.Show(new HomeScreen(m_mode)));
-            p.EndRow();
-            p.Label("Objects get automatic names for now. Name, category, tape W/D/H, symmetry, notes and photo: next milestone.",
-                22, AnnPanel.DimText);
+        private string RoomStatus() => "Frame: " + m_mode.Room.Status;
+
+        private Color RoomColor() => m_mode.Room.State == RoomFrameState.Localized ? new Color(0.45f, 0.95f, 0.55f) :
+            m_mode.Room.State == RoomFrameState.Failed ? new Color(1f, 0.4f, 0.4f) : AnnPanel.Warning;
+
+        private string TipSummary()
+        {
+            var l = m_mode.Rig.TipIsDefault(OVRInput.Controller.LTouch) ? "L default" : "L calibrated";
+            var r = m_mode.Rig.TipIsDefault(OVRInput.Controller.RTouch) ? "R default" : "R calibrated";
+            return l + ", " + r;
         }
     }
 
@@ -167,7 +116,7 @@ namespace QuestDetect3D.Annotation
 
     public static class Pager
     {
-        public static void Build(AnnPanel p, int page, int pages, System.Action<int> step)
+        public static void Build(AnnPanel p, int page, int pages, Action<int> step)
         {
             if (pages <= 1)
             {
@@ -175,10 +124,36 @@ namespace QuestDetect3D.Annotation
             }
 
             p.BeginRow();
-            p.Button("< Prev", () => step(-1), page > 0);
-            p.Button($"Page {page + 1} / {pages}", null, false);
-            p.Button("Next >", () => step(1), page < pages - 1);
+            p.Button("< Prev", () => step(-1), page > 0, null, 56);
+            p.Button($"Page {page + 1} / {pages}", null, false, null, 56);
+            p.Button("Next >", () => step(1), page < pages - 1, null, 56);
             p.EndRow();
+        }
+    }
+
+    /// <summary>Shared drawing for touch steps: tip spheres and plumb lines from both controller tips to the floor.</summary>
+    public static class TouchAids
+    {
+        public static void DrawTips(AnnotationMode mode, bool plumb)
+        {
+            var floorY = mode.FloorWorldY();
+            foreach (var c in new[] { OVRInput.Controller.LTouch, OVRInput.Controller.RTouch })
+            {
+                if (!mode.Rig.IsTracked(c))
+                {
+                    continue;
+                }
+
+                var tip = mode.Rig.TipWorld(c);
+                var color = mode.Rig.TipIsDefault(c) ? new Color(1f, 0.75f, 0.2f, 1f) : new Color(0.35f, 1f, 0.5f, 1f);
+                mode.Draw.Point(tip, color, 0.012f);
+                if (plumb && tip.y > floorY + 0.01f)
+                {
+                    var foot = new Vector3(tip.x, floorY + 0.002f, tip.z);
+                    mode.Draw.Line(tip, foot, new Color(1f, 1f, 1f, 0.7f), 0.0008f);
+                    mode.Draw.FloorRing(foot, 0.015f, new Color(1f, 1f, 1f, 0.8f), 0.001f);
+                }
+            }
         }
     }
 }

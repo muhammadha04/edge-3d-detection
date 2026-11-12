@@ -1,0 +1,30 @@
+// Copies the left-eye Quest environment depth (Texture2DArray slice 0) into a float buffer of LINEAR depth in
+// metres (view-space z of the depth camera), using the same conversion as Meta's occlusion shaders:
+//   ndc = raw * 2 - 1;  linear = ZBufferParams.x / (ndc + ZBufferParams.y)
+// Texel (x, y) is written to index x + y * Size (row y = texture row y, i.e. uv.v = (y + 0.5) / Size).
+// Invalid / far texels (raw >= 1) are written as 0.
+#pragma kernel CopyDepth
+
+Texture2DArray<float> _EnvironmentDepthTexture;
+float4 _EnvironmentDepthZBufferParams;
+uint _Size;
+RWStructuredBuffer<float> _Out;
+
+[numthreads(8, 8, 1)]
+void CopyDepth(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Size || id.y >= _Size)
+    {
+        return;
+    }
+
+    const float raw = _EnvironmentDepthTexture[uint3(id.x, id.y, 0)];
+    float linearDepth = 0.0;
+    if (raw > 0.0 && raw < 0.99999)
+    {
+        const float ndc = raw * 2.0 - 1.0;
+        linearDepth = _EnvironmentDepthZBufferParams.x / (ndc + _EnvironmentDepthZBufferParams.y);
+    }
+
+    _Out[id.x + id.y * _Size] = linearDepth;
+}

@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Text;
 using Meta.XR;
 using QuestDetect3D.Annotation;
+using QuestDetect3D.Recording;
 using Unity.Collections;
 using Unity.InferenceEngine;
 using UnityEngine;
@@ -43,6 +44,7 @@ namespace QuestDetect3D
         private readonly StringBuilder m_hudText = new StringBuilder(512);
         private readonly Dictionary<int, BackrestEstimator> m_backrest = new Dictionary<int, BackrestEstimator>();
         private readonly List<TrackedObject> m_probeList = new List<TrackedObject>();
+        private readonly List<DetectorFit> m_frameFits = new List<DetectorFit>();
 
         private const float ShowHysteresis = 0.03f;
         private const int BackrestRaysPerTrack = 12;
@@ -244,6 +246,13 @@ namespace QuestDetect3D
                 Raycast = m_raycast,
                 Depth = m_depth,
                 Camera = m_camera,
+                ResetDetector = () =>
+                {
+                    m_tracker.Reset();
+                    m_backrest.Clear();
+                },
+                DetectorStatus = () => m_yolo == null ? "no model" : $"{m_yolo.Status} {m_yolo.InferenceHz:F1} Hz",
+                DetectorModel = m_yolo != null ? m_yolo.ModelName : "none",
             });
         }
 
@@ -266,7 +275,7 @@ namespace QuestDetect3D
                 m_frames.TryCapture(OnFrameCaptured);
             }
 
-            if (!AnnotateActive && UseYolo && !MenuOpen && m_yolo != null && m_yolo.IsReady && !m_yolo.IsBusy && m_frames != null &&
+            if ((AnnotateActive ? m_annotate.WantsDetector : UseYolo) && !MenuOpen && m_yolo != null && m_yolo.IsReady && !m_yolo.IsBusy && m_frames != null &&
                 m_camera.IsUpdatedThisFrame && m_headSpeedDegPerSec < MaxHeadSpeedForCapture &&
                 m_frames.TryCurrentCameraModel(out var cam))
             {
@@ -418,10 +427,12 @@ namespace QuestDetect3D
 
         private void OnYoloFrame(YoloFrame frame)
         {
-            if (MenuOpen || !UseYolo)
+            if (MenuOpen || (!UseYolo && !AnnotateActive))
             {
                 return;
             }
+
+            m_frameFits.Clear();
 
             var now = Time.realtimeSinceStartup;
             var cam = frame.Camera;
@@ -439,6 +450,11 @@ namespace QuestDetect3D
             {
                 var info = Categories.Get(det.Category);
                 var fit = m_fitter.Fit(det.Viewport, cam, info, m_depth, floorY, m_debug.Enabled ? m_fitPoints : null);
+                if (AnnotateActive)
+                {
+                    m_frameFits.Add(new DetectorFit { Detection = det, Fit = fit });
+                }
+
                 if (!fit.Valid)
                 {
                     m_fitsFailed++;
@@ -483,6 +499,10 @@ namespace QuestDetect3D
 
             m_debug.End();
             m_tracker.ProcessMulti(m_observations, t => IsExpectedVisible(t, cam), now);
+            if (AnnotateActive)
+            {
+                m_annotate.OnDetectorFrame(frame, m_frameFits, m_tracker.Tracks);
+            }
         }
 
         private bool IsExpectedVisible(TrackedObject track, CameraModel cam)
@@ -534,7 +554,7 @@ namespace QuestDetect3D
 
                 // Minimum-confidence threshold from the start menu (small hysteresis against flicker).
                 var threshold = m_settings.MinConfidence - (visual.Shown ? ShowHysteresis : 0f);
-                visual.SetShown(!MenuOpen && track.Confidence >= threshold);
+                visual.SetShown(!MenuOpen && !AnnotateActive && track.Confidence >= threshold);
 
                 var side = m_backrest.TryGetValue(track.Id, out var est) && est.Decided ? est.QuarterTurns : -1;
                 visual.SetScan(m_settings.ShowScan && track.Category == ObjectCategory.Chair, side);
@@ -544,7 +564,7 @@ namespace QuestDetect3D
         /// <summary>Scan mode: a few depth rays per frame decide which side of each shown chair is the backrest.</summary>
         private void ProbeBackrests()
         {
-            if (MenuOpen || !m_settings.ShowScan || m_head == null || m_depth == null || !m_depth.IsAvailable)
+            if (MenuOpen || AnnotateActive || !m_settings.ShowScan || m_head == null || m_depth == null || !m_depth.IsAvailable)
             {
                 return;
             }

@@ -159,12 +159,13 @@ namespace QuestDetect3D.Annotation
             return label;
         }
 
-        public Button Button(string text, Action onClick, bool enabled = true, Color? color = null)
+        public Button Button(string text, Action onClick, bool enabled = true, Color? color = null, int height = ButtonHeight,
+            int fontSize = ButtonSize)
         {
             var rect = NewRect("Button " + text, m_parent);
             var element = rect.gameObject.AddComponent<LayoutElement>();
-            element.minHeight = ButtonHeight;
-            element.preferredHeight = ButtonHeight;
+            element.minHeight = height;
+            element.preferredHeight = height;
             element.flexibleWidth = 1f;
             var image = rect.gameObject.AddComponent<Image>();
             image.color = Color.white;
@@ -187,11 +188,27 @@ namespace QuestDetect3D.Annotation
                 button.onClick.AddListener(() => onClick());
             }
 
-            var label = NewText("Text", rect, text, ButtonSize, enabled ? TextColor : new Color(0.45f, 0.48f, 0.52f, 1f),
+            var label = NewText("Text", rect, text, fontSize, enabled ? TextColor : new Color(0.45f, 0.48f, 0.52f, 1f),
                 TextAnchor.MiddleCenter);
             Stretch(label.rectTransform);
             label.raycastTarget = false;
             return button;
+        }
+
+        /// <summary>Image of fixed height (width from the texture aspect).</summary>
+        public RawImage Image(Texture texture, float heightPx)
+        {
+            var rect = NewRect("Image", m_parent);
+            var element = rect.gameObject.AddComponent<LayoutElement>();
+            element.minHeight = heightPx;
+            element.preferredHeight = heightPx;
+            var image = rect.gameObject.AddComponent<RawImage>();
+            image.texture = texture;
+            image.raycastTarget = false;
+            var fitter = rect.gameObject.AddComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.HeightControlsWidth;
+            fitter.aspectRatio = texture != null && texture.height > 0 ? texture.width / (float)texture.height : 1.333f;
+            return image;
         }
 
         /// <summary>Following widgets are laid out side by side until EndRow().</summary>

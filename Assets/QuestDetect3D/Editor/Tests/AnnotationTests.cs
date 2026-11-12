@@ -20,6 +20,7 @@ namespace QuestDetect3D.Tests
             Run(r, "ann-json-roundtrip", TestJsonRoundTrip);
             Run(r, "ann-store-restart", TestStoreRestart);
             Run(r, "ann-store-corrupt", TestCorruptFile);
+            AnnotationLogicTests.RunAll(r);
             return r;
         }
 
