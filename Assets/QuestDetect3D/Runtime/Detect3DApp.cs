@@ -1,8 +1,12 @@
 // QuestDetect3D v2 — orchestrates: PCA frame → detector (2D box keypoints) → metric box fit on the support
 // plane → multi-view tracker with confidence → anchored 3D highlights + HUD.
 //
+// A start menu (SessionMenu) picks the display mode (box, or lab-chair scan + cyan keypoints) and the minimum
+// confidence a box needs before it is drawn. Every session starts empty; nothing is saved between launches
+// except those two menu settings.
+//
 // Controls (Quest Touch):
-//   A (right)  next object category (Chair → Cup → Shoe → Camera)
+//   A (right) / Menu (left)  open the start menu (Start there begins a fresh session)
 //   B (right)  toggle debug overlay (network keypoints vs fitted box)
 //   Y (left)   reset all objects
 //   X (left)   show / hide HUD
@@ -30,6 +34,16 @@ namespace QuestDetect3D
         private readonly Dictionary<int, Transform> m_anchors = new Dictionary<int, Transform>();
         private readonly List<BoxObservation> m_observations = new List<BoxObservation>();
         private readonly StringBuilder m_hudText = new StringBuilder(512);
+        private readonly Dictionary<int, BackrestEstimator> m_backrest = new Dictionary<int, BackrestEstimator>();
+        private readonly List<TrackedObject> m_probeList = new List<TrackedObject>();
+
+        private const float ShowHysteresis = 0.03f;
+        private const int BackrestRaysPerTrack = 12;
+        private const int BackrestTracksPerFrame = 2;
+        private int m_probeCursor;
+
+        private AppSettings m_settings;
+        private SessionMenu m_menu;
 
         private PcaFrameSource m_frames;
         private Transform m_head;
@@ -74,7 +88,12 @@ namespace QuestDetect3D
             m_debug = DebugOverlay.Create(m_material);
             m_tracker.TrackConfirmed += OnTrackConfirmed;
             m_tracker.TrackRemoved += OnTrackRemoved;
-            m_category = m_startCategory;
+            // Chairs only for now (the other Objectron models stay in the build for later experiments).
+            m_category = ObjectCategory.Chair;
+            m_settings = AppSettings.Load();
+            m_menu = SessionMenu.Create(m_material, m_font, m_head, m_settings);
+            m_menu.Started += OnSessionStart;
+            OpenMenu();
 
             Log.Info($"app_start version={Application.version} unity={Application.unityVersion} " +
                      $"pca_supported={PassthroughCameraAccess.IsSupported} depth_supported={EnvironmentRaycastManager.IsSupported}");
@@ -107,18 +126,40 @@ namespace QuestDetect3D
             m_detectorRoutine = StartCoroutine(m_detector.Run(category, m_camera.CurrentResolution));
         }
 
+        private bool MenuOpen => m_menu != null && m_menu.IsOpen;
+
+        private void OpenMenu()
+        {
+            m_menu.Open();
+            m_hud.SetVisible(false);
+            m_debug.Clear();
+            Log.Info($"menu_open {m_settings}");
+        }
+
+        private void OnSessionStart()
+        {
+            m_menu.Close();
+            m_tracker.Reset();
+            m_backrest.Clear();
+            m_debug.Enabled = m_settings.ShowScan; // scan mode shows the cyan fitted keypoints
+            m_debug.Clear();
+            m_hud.SetVisible(m_hudVisible);
+            Log.Info($"session_start {m_settings}");
+        }
+
         private void Update()
         {
             HandleInput();
             m_floor.Update(m_raycast, m_head);
 
-            if (m_frames != null && m_detector != null && m_detector.IsReady && !m_detector.IsBusy &&
+            if (!MenuOpen && m_frames != null && m_detector != null && m_detector.IsReady && !m_detector.IsBusy &&
                 !m_frames.IsPending && m_camera.IsUpdatedThisFrame)
             {
                 m_frames.TryCapture(OnFrameCaptured);
             }
 
             UpdateVisuals();
+            ProbeBackrests();
             UpdateHud();
             Heartbeat();
         }
@@ -165,6 +206,11 @@ namespace QuestDetect3D
 
         private void OnDetections(DetectionFrame frame)
         {
+            if (MenuOpen)
+            {
+                return;
+            }
+
             var now = Time.realtimeSinceStartup;
             var cam = frame.Context.Camera;
             var info = Categories.Get(m_category);
@@ -262,8 +308,71 @@ namespace QuestDetect3D
                     m_visuals[track.Id] = visual;
                 }
 
+                if (track.Relocated && m_backrest.TryGetValue(track.Id, out var moved))
+                {
+                    moved.Reset(); // the chair moved: re-measure where its backrest is
+                }
+
                 visual.Apply(track, Categories.Get(track.Category));
+
+                // Minimum-confidence threshold from the start menu (small hysteresis against flicker).
+                var threshold = m_settings.MinConfidence - (visual.Shown ? ShowHysteresis : 0f);
+                visual.SetShown(!MenuOpen && track.Confidence >= threshold);
+
+                var side = m_backrest.TryGetValue(track.Id, out var est) && est.Decided ? est.QuarterTurns : -1;
+                visual.SetScan(m_settings.ShowScan, side);
             }
+        }
+
+        /// <summary>Scan mode: a few depth rays per frame decide which side of each shown chair is the backrest.</summary>
+        private void ProbeBackrests()
+        {
+            if (MenuOpen || !m_settings.ShowScan || m_head == null || m_raycast == null)
+            {
+                return;
+            }
+
+            m_probeList.Clear();
+            var eye = m_head.position;
+            foreach (var track in m_tracker.Tracks)
+            {
+                if (!m_visuals.TryGetValue(track.Id, out var visual) || !visual.Shown)
+                {
+                    continue;
+                }
+
+                var toObj = track.Estimate.Center - eye;
+                var dist = toObj.magnitude;
+                if (dist < 0.4f || dist > 4.5f || Vector3.Dot(toObj / dist, m_head.forward) < 0.5f)
+                {
+                    continue;
+                }
+
+                m_probeList.Add(track);
+            }
+
+            if (m_probeList.Count == 0)
+            {
+                return;
+            }
+
+            var n = Mathf.Min(BackrestTracksPerFrame, m_probeList.Count);
+            for (var k = 0; k < n; k++)
+            {
+                var track = m_probeList[(m_probeCursor + k) % m_probeList.Count];
+                if (!m_backrest.TryGetValue(track.Id, out var est))
+                {
+                    est = new BackrestEstimator();
+                    m_backrest[track.Id] = est;
+                }
+
+                if (est.Probe(track.Estimate, eye, m_raycast, BackrestRaysPerTrack))
+                {
+                    Log.Info($"backrest id={track.Id} {est} box={track.Estimate}");
+                }
+            }
+
+            m_probeCursor = (m_probeCursor + n) % Mathf.Max(1, m_probeList.Count);
         }
 
         private void OnTrackConfirmed(TrackedObject track)
@@ -285,6 +394,8 @@ namespace QuestDetect3D
 
         private void OnTrackRemoved(TrackedObject track)
         {
+            m_backrest.Remove(track.Id);
+
             if (m_visuals.TryGetValue(track.Id, out var visual))
             {
                 if (visual != null)
@@ -310,14 +421,16 @@ namespace QuestDetect3D
 
         private void HandleInput()
         {
-            if (OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch))
+            if (m_menu == null || MenuOpen)
             {
-                var next = Categories.Next(m_category);
-                Log.Info($"category {m_category} -> {next}");
-                if (m_camera != null && m_camera.IsPlaying)
-                {
-                    StartDetector(next);
-                }
+                return; // the menu reads the controllers itself
+            }
+
+            if (OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch) ||
+                OVRInput.GetDown(OVRInput.Button.Start, OVRInput.Controller.LTouch))
+            {
+                OpenMenu();
+                return;
             }
 
             if (OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch))
@@ -333,6 +446,7 @@ namespace QuestDetect3D
             {
                 Log.Info("reset");
                 m_tracker.Reset();
+                m_backrest.Clear();
                 m_debug.Clear();
             }
 
@@ -345,7 +459,7 @@ namespace QuestDetect3D
 
         private void UpdateHud()
         {
-            if (m_hud == null || !m_hudVisible)
+            if (m_hud == null || !m_hudVisible || MenuOpen)
             {
                 return;
             }
@@ -372,6 +486,7 @@ namespace QuestDetect3D
 
             var confirmed = 0;
             var tentative = 0;
+            var shown = 0;
             foreach (var t in m_tracker.Tracks)
             {
                 if (t.State == TrackState.Confirmed)
@@ -382,16 +497,22 @@ namespace QuestDetect3D
                 {
                     tentative++;
                 }
+
+                if (m_visuals.TryGetValue(t.Id, out var v) && v.Shown)
+                {
+                    shown++;
+                }
             }
 
-            m_hudText.Append($"Objects: {confirmed} confirmed, {tentative} candidates\n");
+            m_hudText.Append($"Chairs: {confirmed} confirmed, {tentative} candidates · showing {shown} (≥{m_settings.MinConfidence * 100f:F0}%)\n");
+            m_hudText.Append(m_settings.ShowScan ? "Display: 3D scan + keypoints\n" : "Display: box\n");
             m_hudText.Append($"Last fit: {m_lastFitSummary}\n");
             if (m_fitsFailed > 0 && !string.IsNullOrEmpty(m_lastFailReason))
             {
                 m_hudText.Append($"Rejected fits: {m_fitsFailed} ({m_lastFailReason})\n");
             }
 
-            m_hudText.Append("<size=48>A: next object   B: debug   Y: reset   X: hide</size>");
+            m_hudText.Append("<size=48>A: menu   B: keypoints   Y: reset   X: hide</size>");
             m_hud.SetText(m_hudText.ToString());
         }
     }

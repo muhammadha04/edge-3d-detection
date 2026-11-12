@@ -14,14 +14,25 @@ QuestDetect3D runs on a Quest 3 / 3S. It finds objects in the passthrough camera
 
 ## 1. What the user sees
 
+**Start menu** (opens at launch, and with **A** or the left **Menu** button during a session). Thumbstick up/down picks a row, left/right changes it, **A** starts:
+
+| Option | Values | Effect |
+|---|---|---|
+| Display | **Box** / **3D scan + cyan keypoints** | Box: clean 3D box with size and confidence. Scan: the lab-chair 3D scan is fitted inside each box (section 2.9), with the cyan fitted keypoints from the debug view turned on |
+| Show boxes from | 30–95 % (step 5, default **55 %**) | A box is drawn only while its confidence is at least this value. At 55 % and above you only see **confirmed** chairs, since confirmation happens at 55 %. Lower values also show candidates |
+
+The two menu settings are remembered on the headset. **Detected objects are not**: every session (app launch, or Start from the menu) begins with an empty room. Spatial anchors are only used inside a session and are never saved.
+
+The detector is set to **chairs only**.
+
 - **Candidate** (pulsing box, label `Chair? 42 %`): seen, but not enough evidence yet.
 - **Confirmed** (solid box with corner brackets): label `Chair 87 %`, then `48 × 51 × 86 cm ±2 cm`, then a confidence bar. The colour runs from red (low confidence) through amber to green (high).
 - **HUD** (follows your gaze lazily): model rate and latency, floor status, number of objects, last fit error, rejected fits.
 
 | Button | Action |
 |---|---|
-| A (right) | Next object type: Chair → Cup → Shoe → Camera |
-| B (right) | Debug view. Magenta = network keypoints; cyan = fitted box corners; yellow = error between them |
+| A (right) / Menu (left) | Open the start menu (Start begins a new, empty session) |
+| B (right) | Keypoint view (on by default in scan mode). Magenta = network keypoints; cyan = fitted box corners; yellow = error between them |
 | Y (left) | Reset all objects |
 | X (left) | Hide / show HUD |
 
@@ -128,6 +139,21 @@ In simulation with Objectron-like noise, a chair confirms at ~57%, rises to ~86%
 - **Smoothing:** displayed pose and size go through a **One-Euro filter** (Casiez et al., 2012), which is stable when still and fast when the object really moves. Label text updates at 4 Hz.
 - **Anchoring:** each confirmed object gets an **`OVRSpatialAnchor`**, so its box stays locked to the room if head tracking re-localises.
 - **Label:** billboarded, scaled with distance, with a confidence bar.
+- **Visibility threshold:** a track keeps being tracked and fused below the menu's "Show boxes from" value; only its drawing is hidden. 3 % hysteresis stops boxes flickering at the threshold.
+
+### 2.9 Fitting the lab-chair scan to a detection (no hand calibration)
+The old prototype placed the scan with a saved calibration (offset, rotation, scale), and that never lined up with the model's box. v2 removes the calibration completely, by making the scan and the box share one frame and measuring the one thing the box can't tell us.
+
+1. **Offline normalisation** (`Tools/normalize_scan.py` → `Resources/LabChairScan.bytes`). The OBJ is converted to Unity axes. Then:
+   - its **backrest direction** is found from the geometry itself (the seat-height centroid towards the centroid of the top 20 %);
+   - the body's footprint axes are found with a minimum-area rectangle over everything above seat height, so the rotated 5-star base doesn't skew it;
+   - the mesh is moved so the bottom-centre is the pivot and scaled to exactly a **unit box**, with the backrest at −Z.
+   
+   The scan is now in the **same canonical frame as `UprightBox`**.
+2. **Size and position come straight from the fitted box.** The scan is a child of the box visual, so it sits on the measured support plane, with `localScale = box width × height × depth`. The scan therefore always fills exactly the box the solver produced, and it follows the One-Euro smoothing with it.
+3. **Which way the chair faces comes from depth, not from the network** (`BackrestEstimator`). Objectron's labelling of the box axes isn't reliable enough to tell front from back. In scan mode, each visible chair gets a few depth rays per frame, aimed at random points in the **top slab of the box (83–97 % of its height)**, where only the backrest exists. Hits that land in that slab vote for one of the four box sides (−Z, −X, +Z, +X). This works from any viewpoint: from the front, the rays pass over the seat and stop on the backrest; from behind, they hit its back. A side is accepted after ≥ 24 hits once it beats the runner-up by 1.35×. It is only replaced by a side that is 1.8× stronger. The votes reset when the chair is moved. The scan is rotated by that many quarter turns, with x/z size swapped for 90°, and fades in. Until then the label reads "aligning scan… look at the backrest".
+
+The log records each decision as `backrest id=… scores=[…] ratio=… side=…`.
 
 ---
 
@@ -136,16 +162,20 @@ In simulation with Objectron-like noise, a chair confirms at ~57%, rises to ~86%
 ```
 Assets/QuestDetect3D/
   Runtime/
-    Detect3DApp.cs               orchestrator: capture → detect → fit → track → render, input, HUD, heartbeat log
+    Detect3DApp.cs               orchestrator: menu → capture → detect → fit → track → render, input, HUD, heartbeat log
     Core/        CameraModel (PCA pinhole, mirrors MRUK maths), UprightBox, ObjectCategory (+ size priors),
-                 OneEuroFilter, Log (logcat + on-headset log file)
+                 OneEuroFilter, AppSettings (menu options), Log (logcat + on-headset log file)
     Detection/   DetectionTypes (detector-agnostic KeypointDetection), PcaFrameSource, PcaImageSource,
                  ObjectronDetector
-    Geometry/    BoxSolver (init + Levenberg–Marquardt), SupportPlaneEstimator + FloorEstimator (Depth API)
+    Geometry/    BoxSolver (init + Levenberg–Marquardt), SupportPlaneEstimator + FloorEstimator (Depth API),
+                 BackrestEstimator (Depth API: which box side holds the backrest)
     Tracking/    ConfidenceModel, TrackedObject (fusion), ObjectTracker (association, lifecycle)
-    Visuals/     BoxVisual, HudPanel, DebugOverlay, MeshUtil
+    Visuals/     BoxVisual (box / scan), SessionMenu (start menu), ScanModel (loads the canonical scan),
+                 HudPanel, DebugOverlay, MeshUtil
+  Resources/     LabChairScan.bytes (canonical unit-box scan, built by Tools/normalize_scan.py)
   Editor/        SceneBuilder (builds the scene from Meta's MultiObjectDetection template), BuildScript (batch build)
   Shaders/       QD3D_UnlitTransparent.shader
+Tools/normalize_scan.py          OBJ → canonical scan asset (see 2.9)
 ```
 Everything downstream of detection only consumes `KeypointDetection` (9 box keypoints in viewport coordinates + an optional up-axis hint). **Swapping the model** (CenterPose, a custom network) means writing one new detector class.
 
@@ -214,7 +244,7 @@ Every app line starts with `[QD3D]`. A `status` line is written every 3 s with d
    - CenterPose (GPU);
    - a custom Objectron-style head for more classes;
    - class-agnostic "2D detector + depth point-cloud box" for arbitrary objects.
-5. Persist anchors across sessions.
+5. Load any scanned chair (not only the lab chair): run `normalize_scan.py` on another OBJ.
 
 ## Credits
 - MediaPipe Objectron (Google) via [homuler/MediaPipeUnityPlugin](https://github.com/homuler/MediaPipeUnityPlugin).

@@ -1,5 +1,7 @@
 // World-anchored 3D highlight for one tracked object: thin edges + corner brackets + faint faces,
 // and a billboard label with category, confidence %, metric size and positional uncertainty.
+// In scan mode the lab-chair scan (ScanModel, canonical unit frame) is drawn inside the box, scaled to the
+// box size and turned so its backrest sits on the side measured by BackrestEstimator.
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -23,6 +25,13 @@ namespace QuestDetect3D
         private MeshRenderer m_barBack;
         private MeshRenderer m_barFill;
         private MaterialPropertyBlock m_block;
+        private Transform m_content;
+        private MeshRenderer m_scan;
+        private bool m_scanMode;
+        private bool m_scanAligned;
+        private int m_scanQuarterTurns;
+        private float m_scanFade;
+        private bool m_shown = true;
 
         private Vector3 m_builtSize = new Vector3(-1f, -1f, -1f);
         private Vector3 m_targetPosition;
@@ -69,11 +78,19 @@ namespace QuestDetect3D
 
             m_edgeMesh = new Mesh { name = "QD3D_Edges" };
             m_faceMesh = new Mesh { name = "QD3D_Faces" };
-            m_edges = MeshUtil.CreateMeshObject(transform, "Edges", m_edgeMesh, material, Vector3.zero);
-            m_faces = MeshUtil.CreateMeshObject(transform, "Faces", m_faceMesh, material, Vector3.zero);
+            m_content = new GameObject("Content").transform;
+            m_content.SetParent(transform, false);
+            m_edges = MeshUtil.CreateMeshObject(m_content, "Edges", m_edgeMesh, material, Vector3.zero);
+            m_faces = MeshUtil.CreateMeshObject(m_content, "Faces", m_faceMesh, material, Vector3.zero);
+            var scanMesh = ScanModel.Get();
+            if (scanMesh != null)
+            {
+                m_scan = MeshUtil.CreateMeshObject(m_content, "Scan", scanMesh, material, Vector3.zero);
+                m_scan.enabled = false;
+            }
 
             m_label = new GameObject("Label").transform;
-            m_label.SetParent(transform, false);
+            m_label.SetParent(m_content, false);
             m_plate = MeshUtil.CreateMeshObject(m_label, "Plate", MeshUtil.CreateRect(0.26f, 0.095f), material,
                 new Vector3(0f, 0f, 0.003f));
             m_barBack = MeshUtil.CreateMeshObject(m_label, "BarBack", MeshUtil.CreateRect(0.21f, 0.008f), material,
@@ -83,6 +100,37 @@ namespace QuestDetect3D
             m_title = MeshUtil.CreateText(m_label, "Title", font, 0.034f, new Vector3(0f, 0.018f, 0f), Color.white);
             m_detail = MeshUtil.CreateText(m_label, "Detail", font, 0.022f, new Vector3(0f, -0.012f, 0f),
                 new Color(0.86f, 0.9f, 0.95f));
+        }
+
+        /// <summary>Hide/show everything (used for the minimum-confidence threshold). Tracking continues.</summary>
+        public void SetShown(bool shown)
+        {
+            if (shown == m_shown)
+            {
+                return;
+            }
+
+            m_shown = shown;
+            m_content.gameObject.SetActive(shown);
+        }
+
+        public bool Shown => m_shown;
+
+        /// <summary>Scan mode on/off and the backrest side (quarter turns of the canonical scan; -1 = unknown).</summary>
+        public void SetScan(bool enabled, int quarterTurns)
+        {
+            m_scanMode = enabled && m_scan != null;
+            var aligned = quarterTurns >= 0;
+            if (aligned && (!m_scanAligned || quarterTurns != m_scanQuarterTurns))
+            {
+                m_scanFade = 0f; // fade in on first alignment and when the side flips
+            }
+
+            m_scanAligned = aligned;
+            if (aligned)
+            {
+                m_scanQuarterTurns = quarterTurns & 3;
+            }
         }
 
         public void Apply(TrackedObject track, in CategoryInfo info)
@@ -146,8 +194,9 @@ namespace QuestDetect3D
             if (confirmed)
             {
                 m_title.text = $"<b>{info.DisplayName}</b>  {percent}%";
-                m_detail.text =
-                    $"{m_filteredSize.x * 100f:F0} × {m_filteredSize.z * 100f:F0} × {m_filteredSize.y * 100f:F0} cm   ±{Mathf.Max(1f, track.UncertaintyCm):F0} cm";
+                m_detail.text = m_scanMode && !m_scanAligned
+                    ? "aligning scan… look at the backrest"
+                    : $"{m_filteredSize.x * 100f:F0} × {m_filteredSize.z * 100f:F0} × {m_filteredSize.y * 100f:F0} cm   ±{Mathf.Max(1f, track.UncertaintyCm):F0} cm";
             }
             else
             {
@@ -176,8 +225,37 @@ namespace QuestDetect3D
                 RebuildMeshes(m_shownSize);
             }
 
+            UpdateScan(dt);
             UpdateColors();
             UpdateLabel();
+        }
+
+        private void UpdateScan(float dt)
+        {
+            if (m_scan == null)
+            {
+                return;
+            }
+
+            var show = m_scanMode && m_scanAligned;
+            if (m_scan.enabled != show)
+            {
+                m_scan.enabled = show;
+            }
+
+            if (!show)
+            {
+                return;
+            }
+
+            m_scanFade = Mathf.MoveTowards(m_scanFade, 1f, dt / 0.5f);
+            var odd = (m_scanQuarterTurns & 1) != 0;
+            var t = m_scan.transform;
+            t.localRotation = Quaternion.Euler(0f, 90f * m_scanQuarterTurns, 0f);
+            // Scale is applied in the mesh frame before rotation → x/z swap for a 90° turn.
+            t.localScale = odd
+                ? new Vector3(m_shownSize.z, m_shownSize.y, m_shownSize.x)
+                : m_shownSize;
         }
 
         private void UpdateColors()
@@ -199,12 +277,18 @@ namespace QuestDetect3D
                 alpha = 0.45f + 0.2f * Mathf.Sin((Time.time - m_createdTime) * 5f);
             }
 
+            var scanVisible = m_scan != null && m_scan.enabled;
             var edgeColor = baseColor;
-            edgeColor.a = alpha;
+            edgeColor.a = scanVisible ? 0.3f * alpha : alpha;
             MeshUtil.SetColor(m_edges, m_block, edgeColor);
             var faceColor = baseColor;
-            faceColor.a = alpha;
+            faceColor.a = scanVisible ? 0f : alpha;
             MeshUtil.SetColor(m_faces, m_block, faceColor);
+            if (scanVisible)
+            {
+                var cyan = new Color(0.3f, 0.9f, 1f, 0.32f * m_scanFade * (m_confirmed ? 1f : 0.6f));
+                MeshUtil.SetColor(m_scan, m_block, cyan);
+            }
 
             MeshUtil.SetColor(m_plate, m_block, new Color(0.04f, 0.05f, 0.07f, 0.72f));
             MeshUtil.SetColor(m_barBack, m_block, new Color(1f, 1f, 1f, 0.16f));
