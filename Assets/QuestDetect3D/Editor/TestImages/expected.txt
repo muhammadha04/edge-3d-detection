@@ -1,0 +1,6 @@
+# image|label|score|vp_xmin|vp_ymin|vp_xmax|vp_ymax  (onnxruntime, same bilinear stretch, all classes, NMS 0.55)
+chair_single|chair|0.971|0.4136|0.3683|0.7154|0.8477
+chair_room|tvmonitor|0.848|0.0186|0.8789|0.3697|0.9998
+chair_room|chair|0.786|0.2025|0.2567|0.8381|0.8017
+chair_room|teddy bear|0.322|0.4935|0.9317|0.5808|0.9894
+chair_as_bench|bench|0.754|0.1401|0.1147|0.8239|0.8972

@@ -1,5 +1,8 @@
-// QuestDetect3D v2 — orchestrates: PCA frame → detector (2D box keypoints) → metric box fit on the support
-// plane → multi-view tracker with confidence → anchored 3D highlights + HUD.
+// QuestDetect3D — orchestrates two interchangeable on-device pipelines (chosen in the start menu):
+//   YOLO + depth (default): PCA GPU texture → YOLOv9-t (Unity Inference Engine) 2D boxes → Quest depth rays
+//       inside each box → DepthBoxFitter metric upright box + per-term uncertainty → multi-class tracker.
+//   Objectron (v2 baseline): PCA frame → MediaPipe Objectron 9 keypoints → BoxSolver (LM on support plane).
+// Both feed the same multi-view tracker with confidence → anchored, uncertainty-scaled 3D boxes + HUD.
 //
 // A start menu (SessionMenu) picks the display mode (box, or lab-chair scan + cyan keypoints) and the minimum
 // confidence a box needs before it is drawn. Every session starts empty; nothing is saved between launches
@@ -15,6 +18,7 @@ using System.Collections.Generic;
 using System.Text;
 using Meta.XR;
 using Unity.Collections;
+using Unity.InferenceEngine;
 using UnityEngine;
 
 namespace QuestDetect3D
@@ -24,8 +28,9 @@ namespace QuestDetect3D
         [SerializeField] private PassthroughCameraAccess m_camera;
         [SerializeField] private EnvironmentRaycastManager m_raycast;
         [SerializeField] private ObjectronDetector m_detector;
+        [SerializeField] private ModelAsset m_yoloModel;
+        [SerializeField] private TextAsset m_yoloLabels;
         [SerializeField] private Shader m_overlayShader;
-        [SerializeField] private ObjectCategory m_startCategory = ObjectCategory.Chair;
         [SerializeField] private bool m_useSpatialAnchors = true;
 
         private readonly ObjectTracker m_tracker = new ObjectTracker();
@@ -44,6 +49,18 @@ namespace QuestDetect3D
 
         private AppSettings m_settings;
         private SessionMenu m_menu;
+
+        // YOLO + depth pipeline
+        private YoloDetector m_yolo;
+        private Coroutine m_yoloInit;
+        private EnvironmentDepthRaycaster m_depth;
+        private readonly DepthBoxFitter m_fitter = new DepthBoxFitter();
+        private readonly List<Vector3> m_fitPoints = new List<Vector3>(256);
+        private int m_yoloFrameId;
+        private Quaternion m_lastHeadRotation = Quaternion.identity;
+        private float m_headSpeedDegPerSec;
+        private float m_nextMenuRefresh;
+        private const float MaxHeadSpeedForCapture = 120f; // deg/s: skip motion-blurred frames
 
         private PcaFrameSource m_frames;
         private Transform m_head;
@@ -93,6 +110,17 @@ namespace QuestDetect3D
             m_settings = AppSettings.Load();
             m_menu = SessionMenu.Create(m_material, m_font, m_head, m_settings);
             m_menu.Started += OnSessionStart;
+            m_depth = new EnvironmentDepthRaycaster(m_raycast);
+            if (m_yoloModel != null)
+            {
+                m_yolo = new YoloDetector(m_yoloModel, m_yoloLabels);
+                m_yoloInit = StartCoroutine(m_yolo.Initialize(ToBackend(m_settings.Backend)));
+            }
+            else
+            {
+                Log.Error("yolo_model missing: assign m_yoloModel (SceneBuilder does this)");
+            }
+
             OpenMenu();
 
             Log.Info($"app_start version={Application.version} unity={Application.unityVersion} " +
@@ -104,15 +132,22 @@ namespace QuestDetect3D
                 yield return null;
             }
 
-            m_detector.Bind(m_camera);
-            m_detector.FrameProcessed += OnDetections;
+            if (m_detector != null)
+            {
+                m_detector.Bind(m_camera);
+                m_detector.FrameProcessed += OnDetections;
+            }
+
             var intrinsics = m_camera.Intrinsics;
             Log.Info($"pca_ready res={m_camera.CurrentResolution.x}x{m_camera.CurrentResolution.y} " +
                      $"f=({intrinsics.FocalLength.x:F1},{intrinsics.FocalLength.y:F1}) " +
                      $"c=({intrinsics.PrincipalPoint.x:F1},{intrinsics.PrincipalPoint.y:F1}) " +
                      $"sensor={intrinsics.SensorResolution.x}x{intrinsics.SensorResolution.y}");
-            StartDetector(m_category);
         }
+
+        private static BackendType ToBackend(InferenceBackend b) => b == InferenceBackend.Cpu ? BackendType.CPU : BackendType.GPUCompute;
+
+        private bool UseYolo => m_settings != null && m_settings.Detector == DetectorKind.YoloDepth;
 
         private void StartDetector(ObjectCategory category)
         {
@@ -124,6 +159,24 @@ namespace QuestDetect3D
             m_category = category;
             m_debug.Clear();
             m_detectorRoutine = StartCoroutine(m_detector.Run(category, m_camera.CurrentResolution));
+        }
+
+        /// <summary>Run only the detector the session uses (Objectron costs GPU time even when idle).</summary>
+        private void EnsureDetectorState()
+        {
+            var cameraReady = m_camera != null && m_camera.IsPlaying;
+            var wantObjectron = !MenuOpen && !UseYolo && cameraReady && m_detector != null;
+            if (wantObjectron && m_detectorRoutine == null)
+            {
+                StartDetector(ObjectCategory.Chair);
+            }
+            else if (!wantObjectron && m_detectorRoutine != null && UseYolo)
+            {
+                StopCoroutine(m_detectorRoutine);
+                m_detector.StopGraph();
+                m_detectorRoutine = null;
+                Log.Info("objectron_stopped");
+            }
         }
 
         private bool MenuOpen => m_menu != null && m_menu.IsOpen;
@@ -138,6 +191,16 @@ namespace QuestDetect3D
 
         private void OnSessionStart()
         {
+            if (m_yolo != null && UseYolo && m_yolo.Backend != ToBackend(m_settings.Backend))
+            {
+                if (m_yoloInit != null)
+                {
+                    StopCoroutine(m_yoloInit);
+                }
+
+                m_yoloInit = StartCoroutine(m_yolo.Initialize(ToBackend(m_settings.Backend)));
+            }
+
             m_menu.Close();
             m_tracker.Reset();
             m_backrest.Clear();
@@ -151,11 +214,27 @@ namespace QuestDetect3D
         {
             HandleInput();
             m_floor.Update(m_raycast, m_head);
+            EnsureDetectorState();
+            TrackHeadSpeed();
 
-            if (!MenuOpen && m_frames != null && m_detector != null && m_detector.IsReady && !m_detector.IsBusy &&
+            if (!UseYolo && !MenuOpen && m_frames != null && m_detector != null && m_detector.IsReady && !m_detector.IsBusy &&
                 !m_frames.IsPending && m_camera.IsUpdatedThisFrame)
             {
                 m_frames.TryCapture(OnFrameCaptured);
+            }
+
+            if (UseYolo && !MenuOpen && m_yolo != null && m_yolo.IsReady && !m_yolo.IsBusy && m_frames != null &&
+                m_camera.IsUpdatedThisFrame && m_headSpeedDegPerSec < MaxHeadSpeedForCapture &&
+                m_frames.TryCurrentCameraModel(out var cam))
+            {
+                StartCoroutine(m_yolo.Run(m_camera.GetTexture(), cam, ++m_yoloFrameId, OnYoloFrame));
+            }
+
+            if (MenuOpen && Time.time >= m_nextMenuRefresh)
+            {
+                m_nextMenuRefresh = Time.time + 0.5f;
+                m_menu.StatusLine = MenuStatus();
+                m_menu.RefreshText();
             }
 
             UpdateVisuals();
@@ -172,6 +251,30 @@ namespace QuestDetect3D
 
         private void OnApplicationQuit() => Log.Flush();
 
+        private void OnDestroy() => m_yolo?.Dispose();
+
+        private void TrackHeadSpeed()
+        {
+            if (m_head == null || Time.deltaTime <= 0f)
+            {
+                return;
+            }
+
+            var angle = Quaternion.Angle(m_lastHeadRotation, m_head.rotation);
+            m_lastHeadRotation = m_head.rotation;
+            m_headSpeedDegPerSec = Mathf.Lerp(m_headSpeedDegPerSec, angle / Time.deltaTime, 0.5f);
+        }
+
+        private string MenuStatus()
+        {
+            var cam = m_camera != null && m_camera.IsPlaying ? "camera ok" : "waiting for camera permission";
+            var depth = m_depth != null && m_depth.IsAvailable ? "depth ok" : "depth unavailable";
+            var model = UseYolo
+                ? (m_yolo == null ? "YOLO model missing" : $"YOLO {m_yolo.Status}")
+                : (m_detector == null ? "Objectron missing" : "Objectron starts with the session");
+            return $"{model} · {cam} · {depth}";
+        }
+
         private float m_lastHeartbeat;
         private int m_framesProcessed;
         private int m_rawDetections;
@@ -185,9 +288,11 @@ namespace QuestDetect3D
             }
 
             m_lastHeartbeat = now;
-            Log.Info($"status cam={(m_camera != null && m_camera.IsPlaying)} " +
-                     $"detector={(m_detector != null ? m_detector.Status : "null")} hz={m_detector?.InferenceHz:F1} " +
-                     $"ms={m_detector?.LastInferenceMs:F0} frames={m_framesProcessed} raw_dets={m_rawDetections} " +
+            var detStatus = UseYolo
+                ? $"yolo={(m_yolo != null ? m_yolo.Status : "null")}/{m_yolo?.Backend} hz={m_yolo?.InferenceHz:F1} ms={m_yolo?.LastInferenceMs:F0}"
+                : $"objectron={(m_detector != null ? m_detector.Status : "null")} hz={m_detector?.InferenceHz:F1} ms={m_detector?.LastInferenceMs:F0}";
+            Log.Info($"status menu={MenuOpen} cam={(m_camera != null && m_camera.IsPlaying)} {detStatus} " +
+                     $"head={m_headSpeedDegPerSec:F0}deg/s frames={m_framesProcessed} raw_dets={m_rawDetections} " +
                      $"frames_with_dets={m_framesWithDetections} fits_ok={m_fitsOk} fits_failed={m_fitsFailed} " +
                      $"last_fail={m_lastFailReason} floor={(m_floor.HasFloor ? m_floor.FloorY.ToString("F2") : "none")}" +
                      $"({m_floor.SampleCount}) depth={EnvironmentRaycastManager.IsSupported} tracks={m_tracker.Tracks.Count} " +
@@ -268,6 +373,75 @@ namespace QuestDetect3D
             m_tracker.Process(m_category, m_observations, t => IsExpectedVisible(t, cam), now);
         }
 
+        private void OnYoloFrame(YoloFrame frame)
+        {
+            if (MenuOpen || !UseYolo)
+            {
+                return;
+            }
+
+            var now = Time.realtimeSinceStartup;
+            var cam = frame.Camera;
+            var floorY = m_floor.HasFloor ? m_floor.FloorY : float.NaN;
+            m_observations.Clear();
+            m_debug.Begin();
+            m_framesProcessed++;
+            m_rawDetections += frame.Detections.Count;
+            if (frame.Detections.Count > 0)
+            {
+                m_framesWithDetections++;
+            }
+
+            foreach (var det in frame.Detections)
+            {
+                var info = Categories.Get(det.Category);
+                var fit = m_fitter.Fit(det.Viewport, cam, info, m_depth, floorY, m_debug.Enabled ? m_fitPoints : null);
+                if (!fit.Valid)
+                {
+                    m_fitsFailed++;
+                    m_lastFailReason = $"{det.Label}: {fit.FailReason}";
+                    continue;
+                }
+
+                m_fitsOk++;
+                var quality = ConfidenceModel.DepthObservationQuality(fit, info, det.Score);
+                var view = fit.Box.Center - cam.Position;
+                view.y = 0f;
+                m_observations.Add(new BoxObservation
+                {
+                    Box = fit.Box,
+                    Quality = quality.Total,
+                    Breakdown = quality,
+                    Time = now,
+                    ViewDirection = view.sqrMagnitude > 1e-6f ? view.normalized : Vector3.forward,
+                    RmsPx = 0f,
+                    SupportSigma = fit.UsedFloor ? m_floor.Sigma : 0.03f,
+                    FrameId = frame.FrameId,
+                    Category = det.Category,
+                    YawPeriodDeg = 90f,
+                    Score = det.Score,
+                    SigmaPos = fit.SigmaPos,
+                });
+                if (m_debug.Enabled)
+                {
+                    m_debug.AddDepthFit(cam, det.Viewport, fit, m_fitPoints);
+                }
+
+                m_lastFitSummary = $"{info.DisplayName} {det.Score:F2} · {fit.ObjectPoints} pts · " +
+                                   $"{fit.Box.Size.x * 100f:F0}×{fit.Box.Size.z * 100f:F0}×{fit.Box.Size.y * 100f:F0}cm · " +
+                                   $"σ {fit.SigmaPos * 100f:F0}cm · q {quality.Total:F2}";
+                if (now - m_lastLogTime > 1f)
+                {
+                    m_lastLogTime = now;
+                    Log.Info($"yolo_fit frame={frame.FrameId} {det} {fit} {quality} infer={frame.InferenceMs:F0}ms " +
+                             $"layer_frames={frame.LayerFrames}");
+                }
+            }
+
+            m_debug.End();
+            m_tracker.ProcessMulti(m_observations, t => IsExpectedVisible(t, cam), now);
+        }
+
         private bool IsExpectedVisible(TrackedObject track, CameraModel cam)
         {
             var center = track.Estimate.Center;
@@ -320,14 +494,14 @@ namespace QuestDetect3D
                 visual.SetShown(!MenuOpen && track.Confidence >= threshold);
 
                 var side = m_backrest.TryGetValue(track.Id, out var est) && est.Decided ? est.QuarterTurns : -1;
-                visual.SetScan(m_settings.ShowScan, side);
+                visual.SetScan(m_settings.ShowScan && track.Category == ObjectCategory.Chair, side);
             }
         }
 
         /// <summary>Scan mode: a few depth rays per frame decide which side of each shown chair is the backrest.</summary>
         private void ProbeBackrests()
         {
-            if (MenuOpen || !m_settings.ShowScan || m_head == null || m_raycast == null)
+            if (MenuOpen || !m_settings.ShowScan || m_head == null || m_depth == null || !m_depth.IsAvailable)
             {
                 return;
             }
@@ -336,7 +510,7 @@ namespace QuestDetect3D
             var eye = m_head.position;
             foreach (var track in m_tracker.Tracks)
             {
-                if (!m_visuals.TryGetValue(track.Id, out var visual) || !visual.Shown)
+                if (track.Category != ObjectCategory.Chair || !m_visuals.TryGetValue(track.Id, out var visual) || !visual.Shown)
                 {
                     continue;
                 }
@@ -366,7 +540,7 @@ namespace QuestDetect3D
                     m_backrest[track.Id] = est;
                 }
 
-                if (est.Probe(track.Estimate, eye, m_raycast, BackrestRaysPerTrack))
+                if (est.Probe(track.Estimate, eye, m_depth, BackrestRaysPerTrack))
                 {
                     Log.Info($"backrest id={track.Id} {est} box={track.Estimate}");
                 }
@@ -464,12 +638,20 @@ namespace QuestDetect3D
                 return;
             }
 
-            var info = Categories.Get(m_category);
             m_hudText.Clear();
-            m_hudText.Append("<b>QuestDetect3D v2</b>   looking for: <b>").Append(info.DisplayName).Append("</b>\n");
+            m_hudText.Append("<b>QuestDetect3D</b>   ")
+                .Append(UseYolo ? "YOLO + depth · furniture" : "Objectron · chairs").Append('\n');
             if (m_camera == null || !m_camera.IsPlaying)
             {
                 m_hudText.Append("Waiting for camera permission…\n");
+            }
+            else if (UseYolo)
+            {
+                m_hudText.Append(m_yolo == null
+                    ? "YOLO model missing\n"
+                    : m_yolo.IsReady
+                        ? $"YOLOv9-t {m_yolo.InferenceHz:F1} Hz · {m_yolo.LastInferenceMs:F0} ms · {(m_yolo.Backend == BackendType.CPU ? "CPU" : "GPU")}\n"
+                        : $"YOLO: {m_yolo.Status}\n");
             }
             else if (m_detector == null || !m_detector.IsReady)
             {
@@ -504,7 +686,7 @@ namespace QuestDetect3D
                 }
             }
 
-            m_hudText.Append($"Chairs: {confirmed} confirmed, {tentative} candidates · showing {shown} (≥{m_settings.MinConfidence * 100f:F0}%)\n");
+            m_hudText.Append($"Objects: {confirmed} confirmed, {tentative} candidates · showing {shown} (≥{m_settings.MinConfidence * 100f:F0}%)\n");
             m_hudText.Append(m_settings.ShowScan ? "Display: 3D scan + keypoints\n" : "Display: box\n");
             m_hudText.Append($"Last fit: {m_lastFitSummary}\n");
             if (m_fitsFailed > 0 && !string.IsNullOrEmpty(m_lastFailReason))

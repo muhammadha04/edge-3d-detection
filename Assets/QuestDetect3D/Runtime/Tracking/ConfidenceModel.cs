@@ -19,6 +19,8 @@ namespace QuestDetect3D
 {
     public struct QualityBreakdown
     {
+        /// <summary>True for YOLO + depth fits (Reprojection = point/box agreement, Gravity = depth coverage).</summary>
+        public bool FromDepth;
         public float Reprojection;
         public float Support;
         public float Gravity;
@@ -28,8 +30,11 @@ namespace QuestDetect3D
         public float Total;
 
         public override string ToString() =>
-            $"q={Total:F2} [reproj={Reprojection:F2} support={Support:F2} gravity={Gravity:F2} size={Size:F2} " +
-            $"dist={Distance:F2} model={Model:F2}]";
+            FromDepth
+                ? $"q={Total:F2} [fit={Reprojection:F2} support={Support:F2} coverage={Gravity:F2} size={Size:F2} " +
+                  $"dist={Distance:F2} score={Model:F2}]"
+                : $"q={Total:F2} [reproj={Reprojection:F2} support={Support:F2} gravity={Gravity:F2} size={Size:F2} " +
+                  $"dist={Distance:F2} model={Model:F2}]";
     }
 
     public struct ConfidenceBreakdown
@@ -91,6 +96,30 @@ namespace QuestDetect3D
             }
 
             q.Model = Mathf.Clamp(det.ModelScore, 0.3f, 1f);
+            q.Total = Mathf.Clamp01(q.Reprojection * q.Support * q.Gravity * q.Size * q.Distance * q.Model);
+            return q;
+        }
+
+        /// <summary>
+        /// Quality of one YOLO + depth box fit. Every factor is a named, inspectable term:
+        ///   fit      – object points lie inside the fitted box and the object separated cleanly from background
+        ///   support  – bottom came from the floor model (vs. lowest visible points)
+        ///   coverage – enough depth points (and how much of the depth had to be completed from the prior)
+        ///   size     – metric size plausible for the category
+        ///   distance – far objects get fewer depth samples and noisier depth
+        ///   score    – detector class score
+        /// </summary>
+        public static QualityBreakdown DepthObservationQuality(in DepthFitResult fit, in CategoryInfo info, float score)
+        {
+            var q = new QualityBreakdown { FromDepth = true };
+            q.Reprojection = Mathf.Clamp01(0.35f + 0.65f * fit.InsideFraction) * (0.6f + 0.4f * fit.ClusterFraction);
+            q.Support = fit.UsedFloor || info.Support == SupportSurface.AnyHorizontal ? 1f : 0.75f;
+            var expected = Mathf.Max(0.2f, info.TypicalShort);
+            q.Gravity = Mathf.Sqrt(Mathf.Clamp01(fit.ObjectPoints / 40f)) *
+                        (1f - 0.45f * Mathf.Clamp01(fit.Completion / expected));
+            q.Size = SizePlausibility(fit.Box.Size, info);
+            q.Distance = fit.Distance < 0.45f ? 0.6f : fit.Distance <= 3f ? 1f : Mathf.Exp(-(fit.Distance - 3f) / 1.5f);
+            q.Model = Mathf.Clamp(score / 0.6f, 0.3f, 1f);
             q.Total = Mathf.Clamp01(q.Reprojection * q.Support * q.Gravity * q.Size * q.Distance * q.Model);
             return q;
         }

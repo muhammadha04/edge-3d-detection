@@ -8,7 +8,6 @@
 // Votes for the four box sides (-Z, -X, +Z, +X) accumulate over frames; a side is accepted once it clearly
 // dominates and is only replaced by a clearly stronger one.
 using UnityEngine;
-using Meta.XR;
 
 namespace QuestDetect3D
 {
@@ -50,9 +49,9 @@ namespace QuestDetect3D
         }
 
         /// <returns>True when the decision changed (became decided or switched side).</returns>
-        public bool Probe(in UprightBox box, Vector3 eye, EnvironmentRaycastManager raycast, int rays)
+        public bool Probe(in UprightBox box, Vector3 eye, IDepthRaycaster raycast, int rays)
         {
-            if (raycast == null)
+            if (raycast == null || !raycast.IsAvailable)
             {
                 return false;
             }
@@ -85,12 +84,12 @@ namespace QuestDetect3D
                     continue;
                 }
 
-                if (!raycast.Raycast(new Ray(eye, dir / dist), out var hit, dist + Mathf.Max(halfX, halfZ) * 2f + 0.3f))
+                if (!raycast.Raycast(new Ray(eye, dir / dist), dist + Mathf.Max(halfX, halfZ) * 2f + 0.3f, out var hitPoint, out _))
                 {
                     continue;
                 }
 
-                var p = inverse * (hit.point - box.BottomCenter);
+                var p = inverse * (hitPoint - box.BottomCenter);
                 if (p.y < SlabLow * h || p.y > SlabHigh * h ||
                     Mathf.Abs(p.x) > halfX + FootprintMargin || Mathf.Abs(p.z) > halfZ + FootprintMargin)
                 {

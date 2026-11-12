@@ -15,7 +15,7 @@ namespace QuestDetect3D
         private const float StickThreshold = 0.6f;
         private const float RepeatDelay = 0.35f;
         private const float RepeatRate = 0.12f;
-        private const int RowCount = 3;
+        private const int RowCount = 5;
 
         private Transform m_head;
         private TextMesh m_title;
@@ -34,6 +34,9 @@ namespace QuestDetect3D
 
         public event Action Started;
 
+        /// <summary>Shown under the title (e.g. model loading state).</summary>
+        public string StatusLine { get; set; } = "";
+
         public bool IsOpen => gameObject.activeSelf;
 
         public static SessionMenu Create(Material material, Font font, Transform head, AppSettings settings)
@@ -43,15 +46,15 @@ namespace QuestDetect3D
             menu.m_head = head;
             menu.m_settings = settings;
             menu.m_block = new MaterialPropertyBlock();
-            menu.m_plate = MeshUtil.CreateMeshObject(go.transform, "Plate", MeshUtil.CreateRect(0.62f, 0.36f), material,
+            menu.m_plate = MeshUtil.CreateMeshObject(go.transform, "Plate", MeshUtil.CreateRect(0.66f, 0.46f), material,
                 new Vector3(0f, 0f, 0.004f));
             MeshUtil.SetColor(menu.m_plate, menu.m_block, new Color(0.03f, 0.04f, 0.06f, 0.86f));
-            menu.m_title = MeshUtil.CreateText(go.transform, "Title", font, 0.03f, new Vector3(0f, 0.135f, 0f),
+            menu.m_title = MeshUtil.CreateText(go.transform, "Title", font, 0.03f, new Vector3(0f, 0.19f, 0f),
                 Color.white);
-            menu.m_body = MeshUtil.CreateText(go.transform, "Body", font, 0.019f, new Vector3(-0.27f, -0.02f, 0f),
+            menu.m_body = MeshUtil.CreateText(go.transform, "Body", font, 0.019f, new Vector3(-0.30f, -0.03f, 0f),
                 Color.white, TextAnchor.MiddleLeft);
             menu.m_body.alignment = TextAlignment.Left;
-            menu.m_title.text = "<b>QuestDetect3D</b>  ·  chair detection";
+            menu.m_title.text = "<b>QuestDetect3D</b>  ·  3D object detection";
             go.SetActive(false);
             return menu;
         }
@@ -92,9 +95,9 @@ namespace QuestDetect3D
             if (OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch) ||
                 OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, OVRInput.Controller.RTouch))
             {
-                if (m_row == 0)
+                if (m_row < 3)
                 {
-                    ToggleMode();
+                    Navigate(new Vector2Int(1, 0));
                 }
                 else
                 {
@@ -112,13 +115,22 @@ namespace QuestDetect3D
             }
             else if (dir.x != 0)
             {
-                if (m_row == 0)
+                switch (m_row)
                 {
-                    ToggleMode();
-                }
-                else if (m_row == 1)
-                {
-                    m_settings.StepMinConfidence(dir.x);
+                    case 0:
+                        m_settings.Detector = m_settings.Detector == DetectorKind.YoloDepth
+                            ? DetectorKind.Objectron
+                            : DetectorKind.YoloDepth;
+                        break;
+                    case 1:
+                        m_settings.Backend = m_settings.Backend == InferenceBackend.Gpu ? InferenceBackend.Cpu : InferenceBackend.Gpu;
+                        break;
+                    case 2:
+                        ToggleMode();
+                        break;
+                    case 3:
+                        m_settings.StepMinConfidence(dir.x);
+                        break;
                 }
             }
 
@@ -150,25 +162,45 @@ namespace QuestDetect3D
         {
             const string sel = "<color=#4FE3FF>> ";
             const string off = "<color=#C8D0DA>   ";
+            const string hintOpen = "<size=40><color=#8A96A3>      ";
+            const string hintClose = "</color></size>\n";
             m_sb.Clear();
-            var modeName = m_settings.ShowScan ? "3D scan + cyan keypoints" : "Box";
-            m_sb.Append(m_row == 0 ? sel : off).Append("Display:  <b>< ").Append(modeName).Append(" ></b></color>\n");
-            m_sb.Append("<size=44><color=#8A96A3>      ")
-                .Append(m_settings.ShowScan
-                    ? "lab-chair scan fitted into each box, oriented by depth"
-                    : "clean 3D box with size and confidence")
-                .Append("</color></size>\n\n");
+            if (!string.IsNullOrEmpty(StatusLine))
+            {
+                m_sb.Append("<size=42><color=#FFD27A>").Append(StatusLine).Append("</color></size>\n");
+            }
+
+            var yolo = m_settings.Detector == DetectorKind.YoloDepth;
+            m_sb.Append(m_row == 0 ? sel : off).Append("Detector:  <b>< ")
+                .Append(yolo ? "YOLO + depth" : "Objectron (chairs)").Append(" ></b></color>\n");
+            m_sb.Append(hintOpen)
+                .Append(yolo ? "chairs, sofas, tables, beds, plants, screens... boxed from Quest depth"
+                    : "v2 baseline: chair keypoints + box solver")
+                .Append(hintClose);
+
+            m_sb.Append(m_row == 1 ? sel : off).Append("Inference:  <b>< ")
+                .Append(m_settings.Backend == InferenceBackend.Gpu ? "GPU" : "CPU").Append(" ></b></color>\n");
+            m_sb.Append(hintOpen).Append(yolo ? "YOLO backend (switch if GPU misbehaves)" : "not used by Objectron").Append(hintClose);
+
+            var modeName = m_settings.ShowScan ? "3D scan + keypoints" : "Box";
+            m_sb.Append(m_row == 2 ? sel : off).Append("Display:  <b>< ").Append(modeName).Append(" ></b></color>\n");
+            m_sb.Append(hintOpen)
+                .Append(m_settings.ShowScan ? "lab-chair scan in chair boxes + debug points/keypoints"
+                    : "3D box sized by uncertainty, with label")
+                .Append(hintClose);
+
             var pct = Mathf.RoundToInt(m_settings.MinConfidence * 100f);
-            m_sb.Append(m_row == 1 ? sel : off).Append("Show boxes from:  <b>< ").Append(pct).Append("% ></b></color>\n");
-            m_sb.Append("<size=44><color=#8A96A3>      ")
-                .Append(pct >= 55
-                    ? "only confirmed chairs (confirmation happens at 55%)"
-                    : "also shows unconfirmed candidates")
-                .Append("</color></size>\n\n");
-            m_sb.Append(m_row == 2 ? sel : off).Append("<b>Start</b></color>\n\n");
-            m_sb.Append("<size=42><color=#8A96A3>Stick: select / change    A: start    In session, A: this menu</color></size>");
+            m_sb.Append(m_row == 3 ? sel : off).Append("Show boxes from:  <b>< ").Append(pct).Append("% ></b></color>\n");
+            m_sb.Append(hintOpen)
+                .Append(pct >= 55 ? "only confirmed objects (confirmation at 55%)" : "also shows unconfirmed candidates")
+                .Append(hintClose);
+
+            m_sb.Append(m_row == 4 ? sel : off).Append("<b>Start</b></color>\n");
+            m_sb.Append("<size=40><color=#8A96A3>Stick: select / change    A: change / start    In session, A: this menu</color></size>");
             m_body.text = m_sb.ToString();
         }
+
+        public void RefreshText() => Refresh();
 
         private void LateUpdate()
         {

@@ -1,12 +1,14 @@
 #if UNITY_EDITOR
 // Builds Assets/QuestDetect3D/Scenes/Detect3D.unity from Meta's known-good MultiObjectDetection sample scene
-// (camera rig + passthrough + Passthrough Camera Access + Environment Raycast), strips the YOLO/Sentis sample,
-// and adds the MediaPipe bootstrap, the Objectron detector and the QuestDetect3D app.
+// (camera rig + passthrough + Passthrough Camera Access + Environment Raycast), strips the sample's own YOLO UI,
+// and adds the MediaPipe bootstrap, the Objectron detector and the QuestDetect3D app (which runs the sample's
+// YOLOv9-t model itself through Unity Inference Engine).
 // Menu: QuestDetect3D → Rebuild Scene. Batch: called by BuildScript.BuildAndroid.
 using System.Linq;
 using Mediapipe.Unity;
 using Mediapipe.Unity.Objectron;
 using Meta.XR;
+using Unity.InferenceEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -19,6 +21,11 @@ namespace QuestDetect3D.EditorTools
         private const string TemplatePath = "Assets/PassthroughCameraApiSamples/MultiObjectDetection/MultiObjectDetection.unity";
         private const string ShaderPath = "Assets/QuestDetect3D/Shaders/QD3D_UnlitTransparent.shader";
         private const string GraphFolder = "Assets/MediaPipeUnity/Samples/Scenes/Objectron/";
+        /// <summary>Model the app ships: our FP16 export of the sample's YOLOv9-t ONNX (see YoloModelExport).</summary>
+        public const string YoloModelPath = YoloModelExport.Fp16Path;
+        /// <summary>Meta's prebuilt uint8 export (kept for comparison in the self-test).</summary>
+        public const string MetaYoloModelPath = "Assets/PassthroughCameraApiSamples/MultiObjectDetection/SentisInference/Model/yolov9sentis.sentis";
+        public const string YoloLabelsPath = "Assets/PassthroughCameraApiSamples/MultiObjectDetection/SentisInference/Model/SentisYoloClasses.txt";
 
         private static readonly string[] RemoveRootNameFragments =
         {
@@ -148,6 +155,16 @@ namespace QuestDetect3D.EditorTools
             aso.FindProperty("m_camera").objectReferenceValue = pca;
             aso.FindProperty("m_raycast").objectReferenceValue = raycast;
             aso.FindProperty("m_detector").objectReferenceValue = detector;
+            YoloModelExport.EnsureExported();
+            var yoloModel = AssetDatabase.LoadAssetAtPath<ModelAsset>(YoloModelPath);
+            var yoloLabels = AssetDatabase.LoadAssetAtPath<TextAsset>(YoloLabelsPath);
+            if (yoloModel == null || yoloLabels == null)
+            {
+                throw new System.Exception($"QuestDetect3D: YOLO model/labels missing ({YoloModelPath})");
+            }
+
+            aso.FindProperty("m_yoloModel").objectReferenceValue = yoloModel;
+            aso.FindProperty("m_yoloLabels").objectReferenceValue = yoloLabels;
             aso.FindProperty("m_overlayShader").objectReferenceValue = AssetDatabase.LoadAssetAtPath<Shader>(ShaderPath);
             aso.ApplyModifiedPropertiesWithoutUndo();
 

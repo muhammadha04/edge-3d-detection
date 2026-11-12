@@ -1,0 +1,67 @@
+QuestDetect3D self-test 2026-11-12 14:48:51  unity=6000.2.13f1
+--- 1. 3D pipeline on synthetic room ---
+[PASS] decode.count: 2 detections (chair(Chair) 0.90 vp=[0.16,0.22,0.47,0.69]; diningtable(Table) 0.70 vp=[0.13,0.19,0.94,0.53])
+[PASS] decode.viewport: chair(Chair) 0.90 vp=[0.16,0.22,0.47,0.69]
+[PASS] aligned-size.swap: a=(0.50, 0.90, 0.70) b=(0.50, 0.90, 0.70)
+single-view: 72/72 fits, centre err median 3.6 cm (p90 9.4), height err median 2.3 cm, yaw err median 3.0°
+[PASS] single-view.success: 0 failures of 72
+[PASS] single-view.centre: median 3.6 cm (< 12 cm: one view sees only the front)
+[PASS] single-view.height: median 2.3 cm
+[PASS] single-view.yaw: median 3.0 deg
+no-floor: 72/72 fits, centre err median 5.8 cm (p90 11.1), height err median 2.6 cm, yaw err median 3.0°
+[PASS] no-floor.success: 0 failures of 72
+[PASS] no-floor.centre: median 5.8 cm (< 12 cm: one view sees only the front)
+[PASS] no-floor.height: median 2.6 cm
+[PASS] no-floor.yaw: median 3.0 deg
+near-wall: 27/27 fits, centre err median 3.4 cm (p90 6.7), height err median 4.8 cm, yaw err median 2.0°
+[PASS] near-wall.success: 0 failures of 27
+[PASS] near-wall.centre: median 3.4 cm (< 12 cm: one view sees only the front)
+[PASS] near-wall.height: median 4.8 cm
+[PASS] near-wall.yaw: median 2.0 deg
+walk-around: 200 frames, 285 detections, 3 fit failures, 4 tracks
+  fit failure x1: sofa: flat object
+  fit failure x2: chair A: flat object
+[PASS] walk.chair A: track 1 Chair Confirmed C=0.75 centre err 4.4 cm, size err 7%, yaw err 1°, ±1.9 cm, hits 73 [C=0.75 [evidence=1.00 quality=0.94 consistency=0.95 agreement=0.96 views=1.00 presence=0.87]]
+[PASS] walk.chair B: track 2 Chair Confirmed C=0.66 centre err 2.4 cm, size err 12%, yaw err 1°, ±2.5 cm, hits 73 [C=0.66 [evidence=1.00 quality=0.94 consistency=0.83 agreement=0.97 views=1.00 presence=0.87]]
+[PASS] walk.table: track 5 Table Confirmed C=0.63 centre err 4.1 cm, size err 16%, yaw err 0°, ±3.1 cm, hits 33 [C=0.63 [evidence=1.00 quality=0.93 consistency=0.74 agreement=0.95 views=1.00 presence=0.97]]
+[PASS] walk.sofa: track 3 Sofa Confirmed C=0.70 centre err 7.6 cm, size err 10%, yaw err 1°, ±2.4 cm, hits 64 [C=0.70 [evidence=1.00 quality=0.91 consistency=0.87 agreement=0.89 views=1.00 presence=1.00]]
+[PASS] walk.no-false-or-duplicate: 4 confirmed, 4 fully correct, 0 false, 0 duplicates
+[PASS] backrest.side: 5/5 correct. yaw 0°/q0: got 0 want 0; yaw 35°/q0: got 0 want 0; yaw 90°/q2: got 2 want 2; yaw 160°/q0: got 0 want 0; yaw -120°/q1: got 3 want 3; 
+== 21 passed, 0 failed ==
+--- 2. YOLOv9-t variants (Inference Engine CPU) on photos vs onnxruntime FP32 ---
+[meta-uint8] inputs=1 outputs=3 input=640x640
+  chair_single: 60 ms (editor CPU) → chair(Chair) 0.91 vp=[0.42,0.37,0.72,0.85]
+  [PASS] meta-uint8 chair_single/chair: onnx score 0.97, got 0.91, IoU 0.984
+  chair_room: 29 ms (editor CPU) → chair(Chair) 0.45 vp=[0.20,0.26,0.84,0.80]
+  [FAIL] meta-uint8 chair_room/tvmonitor: onnx score 0.85, no match
+  [FAIL] meta-uint8 chair_room/chair: onnx score 0.79, got 0.45, IoU 0.991
+  chair_as_bench: 33 ms (editor CPU) → 
+  [FAIL] meta-uint8 chair_as_bench/bench: onnx score 0.75, no match
+[ours-fp32] inputs=1 outputs=3 input=640x640
+  chair_single: 30 ms (editor CPU) → chair(Chair) 0.97 vp=[0.41,0.37,0.72,0.85]
+  [PASS] ours-fp32 chair_single/chair: onnx score 0.97, got 0.97, IoU 1.000
+  chair_room: 31 ms (editor CPU) → tvmonitor(Screen) 0.85 vp=[0.02,0.88,0.37,1.00]; chair(Chair) 0.79 vp=[0.20,0.26,0.84,0.80]; chair(Chair) 0.26 vp=[0.00,0.42,0.23,0.79]
+  [PASS] ours-fp32 chair_room/tvmonitor: onnx score 0.85, got 0.85, IoU 0.999
+  [PASS] ours-fp32 chair_room/chair: onnx score 0.79, got 0.79, IoU 1.000
+  chair_as_bench: 31 ms (editor CPU) → bench(Bench) 0.75 vp=[0.14,0.11,0.82,0.90]
+  [PASS] ours-fp32 chair_as_bench/bench: onnx score 0.75, got 0.75, IoU 1.000
+== ours-fp32: 4 passed, 0 failed ==
+[ours-uint8] inputs=1 outputs=3 input=640x640
+  chair_single: 33 ms (editor CPU) → chair(Chair) 0.91 vp=[0.42,0.37,0.72,0.85]
+  [PASS] ours-uint8 chair_single/chair: onnx score 0.97, got 0.91, IoU 0.984
+  chair_room: 33 ms (editor CPU) → chair(Chair) 0.45 vp=[0.20,0.26,0.84,0.80]
+  [FAIL] ours-uint8 chair_room/tvmonitor: onnx score 0.85, no match
+  [FAIL] ours-uint8 chair_room/chair: onnx score 0.79, got 0.45, IoU 0.991
+  chair_as_bench: 33 ms (editor CPU) → 
+  [FAIL] ours-uint8 chair_as_bench/bench: onnx score 0.75, no match
+== ours-uint8: 1 passed, 3 failed ==
+[ours-fp16] inputs=1 outputs=3 input=640x640
+  chair_single: 38 ms (editor CPU) → chair(Chair) 0.97 vp=[0.41,0.37,0.72,0.85]
+  [PASS] ours-fp16 chair_single/chair: onnx score 0.97, got 0.97, IoU 1.000
+  chair_room: 35 ms (editor CPU) → tvmonitor(Screen) 0.85 vp=[0.02,0.88,0.37,1.00]; chair(Chair) 0.79 vp=[0.20,0.26,0.84,0.80]; chair(Chair) 0.26 vp=[0.00,0.42,0.23,0.79]
+  [PASS] ours-fp16 chair_room/tvmonitor: onnx score 0.85, got 0.85, IoU 0.999
+  [PASS] ours-fp16 chair_room/chair: onnx score 0.79, got 0.79, IoU 1.000
+  chair_as_bench: 35 ms (editor CPU) → bench(Bench) 0.75 vp=[0.14,0.11,0.82,0.90]
+  [PASS] ours-fp16 chair_as_bench/bench: onnx score 0.75, got 0.75, IoU 1.000
+== ours-fp16: 4 passed, 0 failed  (deployed model: gates the self-test) ==
+SELFTEST OK

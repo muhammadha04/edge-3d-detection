@@ -31,13 +31,15 @@ namespace QuestDetect3D.EditorTools
                     EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android);
                 }
 
+                YoloModelExport.EnsureExported(); // FP16 .sentis from the ONNX (uint8 loses too much confidence)
+                SelfTest.Run(); // synthetic-room 3D tests + YOLO variants on photos; writes Builds/selftest.txt (never blocks the build)
                 SceneBuilder.BuildScene();
 
                 PlayerSettings.productName = "QuestDetect3D";
                 PlayerSettings.companyName = "AmpliLab";
                 PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, PackageName);
-                PlayerSettings.bundleVersion = "2.0.0";
-                PlayerSettings.Android.bundleVersionCode = 2;
+                PlayerSettings.bundleVersion = "2.1.0";
+                PlayerSettings.Android.bundleVersionCode = 3;
                 EditorUserBuildSettings.development = false;
                 AssetDatabase.SaveAssets();
 

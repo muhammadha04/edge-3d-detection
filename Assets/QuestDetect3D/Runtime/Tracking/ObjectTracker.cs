@@ -48,15 +48,37 @@ namespace QuestDetect3D
             TrackedObject.ResetIds();
         }
 
-        /// <param name="observations">Observations of one camera frame.</param>
-        /// <param name="isExpectedVisible">True when a track should have been detected in this frame.</param>
+        /// <summary>Single-category frame (Objectron path): only tracks of that category's group can miss.</summary>
         public void Process(
             ObjectCategory category,
             List<BoxObservation> observations,
             Func<TrackedObject, bool> isExpectedVisible,
             float now)
         {
-            var info = Categories.Get(category);
+            for (var i = 0; i < observations.Count; i++)
+            {
+                var o = observations[i];
+                o.Category = category;
+                if (o.YawPeriodDeg <= 0f)
+                {
+                    o.YawPeriodDeg = 360f;
+                }
+
+                observations[i] = o;
+            }
+
+            ProcessMulti(observations, isExpectedVisible, now, Categories.Get(category).Group);
+        }
+
+        /// <param name="observations">Observations of one camera frame (each carries its own category).</param>
+        /// <param name="isExpectedVisible">True when a track should have been detected in this frame.</param>
+        /// <param name="onlyGroup">Restrict miss counting to one group (null = every track can miss).</param>
+        public void ProcessMulti(
+            List<BoxObservation> observations,
+            Func<TrackedObject, bool> isExpectedVisible,
+            float now,
+            CategoryGroup? onlyGroup = null)
+        {
             var assigned = new HashSet<TrackedObject>();
 
             m_order.Clear();
@@ -70,11 +92,12 @@ namespace QuestDetect3D
             foreach (var index in m_order)
             {
                 var obs = observations[index];
+                var group = Categories.Get(obs.Category).Group;
                 TrackedObject best = null;
                 var bestDistance = float.MaxValue;
                 foreach (var track in m_tracks)
                 {
-                    if (track.Category != category || assigned.Contains(track))
+                    if (track.Group != group || assigned.Contains(track))
                     {
                         continue;
                     }
@@ -96,30 +119,30 @@ namespace QuestDetect3D
                         continue;
                     }
 
-                    best = new TrackedObject(category, now);
+                    best = new TrackedObject(obs.Category, now, obs.YawPeriodDeg > 0f ? obs.YawPeriodDeg : 360f);
                     m_tracks.Add(best);
-                    Log.Info($"track_new id={best.Id} {category} {obs.Box} q={obs.Quality:F2}");
+                    Log.Info($"track_new id={best.Id} {obs.Category} {obs.Box} q={obs.Quality:F2}");
                 }
 
                 assigned.Add(best);
-                best.AddObservation(obs, info, now);
+                best.AddObservation(obs, Categories.Get(best.Category), now);
                 MaybeConfirm(best, now);
             }
 
             foreach (var track in m_tracks)
             {
-                if (track.Category != category || assigned.Contains(track))
+                if (assigned.Contains(track) || (onlyGroup.HasValue && track.Group != onlyGroup.Value))
                 {
                     continue;
                 }
 
                 if (isExpectedVisible != null && isExpectedVisible(track))
                 {
-                    track.RegisterMiss(info, now);
+                    track.RegisterMiss(Categories.Get(track.Category), now);
                 }
             }
 
-            MergeDuplicates(info, now);
+            MergeDuplicates(now);
             Prune(now);
         }
 
@@ -140,7 +163,7 @@ namespace QuestDetect3D
             }
         }
 
-        private void MergeDuplicates(in CategoryInfo info, float now)
+        private void MergeDuplicates(float now)
         {
             for (var i = 0; i < m_tracks.Count; i++)
             {
@@ -148,7 +171,7 @@ namespace QuestDetect3D
                 {
                     var a = m_tracks[i];
                     var b = m_tracks[j];
-                    if (a.Category != b.Category)
+                    if (a.Group != b.Group)
                     {
                         continue;
                     }
@@ -162,7 +185,7 @@ namespace QuestDetect3D
                     // Keep the confirmed / older track.
                     var keep = a.State == TrackState.Confirmed || (b.State != TrackState.Confirmed && a.Hits >= b.Hits) ? a : b;
                     var drop = keep == a ? b : a;
-                    keep.MergeFrom(drop, info, now);
+                    keep.MergeFrom(drop, Categories.Get(keep.Category), now);
                     m_tracks.Remove(drop);
                     Log.Info($"track_merged keep={keep.Id} drop={drop.Id}");
                     TrackRemoved?.Invoke(drop);

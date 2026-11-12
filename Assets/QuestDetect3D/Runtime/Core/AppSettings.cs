@@ -12,6 +12,20 @@ namespace QuestDetect3D
         ScanAndKeypoints,
     }
 
+    public enum DetectorKind
+    {
+        /// <summary>YOLOv9-t (Inference Engine) 2D boxes + Quest depth → metric 3D boxes, many furniture classes.</summary>
+        YoloDepth,
+        /// <summary>MediaPipe Objectron chair keypoints + box solver (v2 baseline).</summary>
+        Objectron,
+    }
+
+    public enum InferenceBackend
+    {
+        Gpu,
+        Cpu,
+    }
+
     public sealed class AppSettings
     {
         public const float MinConfidenceLow = 0.30f;
@@ -21,6 +35,11 @@ namespace QuestDetect3D
 
         private const string KeyMode = "qd3d.displayMode";
         private const string KeyMinConf = "qd3d.minConfidence";
+        private const string KeyDetector = "qd3d.detector";
+        private const string KeyBackend = "qd3d.backend";
+
+        public DetectorKind Detector = DetectorKind.YoloDepth;
+        public InferenceBackend Backend = InferenceBackend.Gpu;
 
         public DisplayMode Mode = DisplayMode.Box;
 
@@ -35,6 +54,8 @@ namespace QuestDetect3D
             {
                 Mode = (DisplayMode)Mathf.Clamp(PlayerPrefs.GetInt(KeyMode, (int)DisplayMode.Box), 0, 1),
                 MinConfidence = PlayerPrefs.GetFloat(KeyMinConf, DefaultMinConfidence),
+                Detector = (DetectorKind)Mathf.Clamp(PlayerPrefs.GetInt(KeyDetector, 0), 0, 1),
+                Backend = (InferenceBackend)Mathf.Clamp(PlayerPrefs.GetInt(KeyBackend, 0), 0, 1),
             };
             s.MinConfidence = Snap(s.MinConfidence);
             return s;
@@ -44,6 +65,8 @@ namespace QuestDetect3D
         {
             PlayerPrefs.SetInt(KeyMode, (int)Mode);
             PlayerPrefs.SetFloat(KeyMinConf, MinConfidence);
+            PlayerPrefs.SetInt(KeyDetector, (int)Detector);
+            PlayerPrefs.SetInt(KeyBackend, (int)Backend);
             PlayerPrefs.Save();
         }
 
@@ -58,6 +81,6 @@ namespace QuestDetect3D
             return Mathf.Round(v / MinConfidenceStep) * MinConfidenceStep;
         }
 
-        public override string ToString() => $"mode={Mode} min_conf={MinConfidence:F2}";
+        public override string ToString() => $"detector={Detector} backend={Backend} mode={Mode} min_conf={MinConfidence:F2}";
     }
 }

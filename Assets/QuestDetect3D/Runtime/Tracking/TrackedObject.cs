@@ -20,6 +20,14 @@ namespace QuestDetect3D
         public float RmsPx;
         public float SupportSigma;
         public int FrameId;
+        /// <summary>Detected category of this frame (tracks vote over these).</summary>
+        public ObjectCategory Category;
+        /// <summary>Yaw is defined modulo this period (360° keypoint fits, 90° depth-box fits).</summary>
+        public float YawPeriodDeg;
+        /// <summary>Detector score in [0,1].</summary>
+        public float Score;
+        /// <summary>Single-frame position uncertainty (m) reported by the box fitter.</summary>
+        public float SigmaPos;
     }
 
     public sealed class TrackedObject
@@ -31,7 +39,12 @@ namespace QuestDetect3D
         private static int s_nextId = 1;
 
         public readonly int Id;
-        public readonly ObjectCategory Category;
+        /// <summary>Current label: weighted vote over all observations in the track's group.</summary>
+        public ObjectCategory Category { get; private set; }
+        public readonly CategoryGroup Group;
+        /// <summary>Yaw period (radians) of this track's detector: 2π for keypoint fits, π/2 for depth boxes.</summary>
+        public float YawPeriod = 2f * Mathf.PI;
+        private readonly float[] m_votes = new float[32];
         public readonly List<BoxObservation> Observations = new List<BoxObservation>(MaxObservations);
 
         public TrackState State = TrackState.Tentative;
@@ -57,10 +70,12 @@ namespace QuestDetect3D
         private int m_consecutiveOutliers;
         private float m_firstOutlierTime;
 
-        public TrackedObject(ObjectCategory category, float now)
+        public TrackedObject(ObjectCategory category, float now, float yawPeriodDeg = 360f)
         {
             Id = s_nextId++;
             Category = category;
+            Group = Categories.Get(category).Group;
+            YawPeriod = Mathf.Clamp(yawPeriodDeg, 90f, 360f) * Mathf.Deg2Rad;
             CreatedTime = now;
             LastSeenTime = now;
         }
@@ -125,11 +140,33 @@ namespace QuestDetect3D
             }
 
             Observations.Add(observation);
+            Vote(observation);
             LastObservation = observation;
             LastSeenTime = now;
             Hits++;
             Misses = Mathf.Max(0f, Misses * 0.7f - 0.5f);
             Recompute(info, now);
+        }
+
+        private void Vote(in BoxObservation o)
+        {
+            var c = (int)o.Category;
+            if (c < 0 || c >= m_votes.Length)
+            {
+                return;
+            }
+
+            m_votes[c] += Mathf.Max(0.05f, o.Quality) * Mathf.Max(0.1f, o.Score);
+            var best = (int)Category;
+            for (var i = 0; i < m_votes.Length; i++)
+            {
+                if (m_votes[i] > m_votes[best] * 1.15f)
+                {
+                    best = i; // 15 % hysteresis so the label doesn't flicker between chair/bench
+                }
+            }
+
+            Category = (ObjectCategory)best;
         }
 
         public void RegisterMiss(in CategoryInfo info, float now)
@@ -145,6 +182,7 @@ namespace QuestDetect3D
                 if (Observations.Count < MaxObservations)
                 {
                     Observations.Add(o);
+                    Vote(o);
                 }
             }
 
@@ -162,7 +200,7 @@ namespace QuestDetect3D
                 return;
             }
 
-            var period = info.YawSymmetric180 ? Mathf.PI : 2f * Mathf.PI;
+            var period = Mathf.Min(YawPeriod, info.YawSymmetric180 ? Mathf.PI : 2f * Mathf.PI);
             var weights = new float[n];
             var sumW = 0f;
             for (var i = 0; i < n; i++)
@@ -210,6 +248,7 @@ namespace QuestDetect3D
             var pos = Vector3.zero;
             var qualityW = 0f;
             var supportSigma = 0f;
+            var obsSigma = 0f;
             for (var i = 0; i < n; i++)
             {
                 if (!inlier[i])
@@ -223,6 +262,7 @@ namespace QuestDetect3D
                 pos += Observations[i].Box.BottomCenter * w;
                 qualityW += Observations[i].Quality * w;
                 supportSigma += Observations[i].SupportSigma * w;
+                obsSigma += Observations[i].SigmaPos * w;
             }
 
             if (sumIn <= 0f)
@@ -237,6 +277,7 @@ namespace QuestDetect3D
             pos /= sumIn;
             var meanQuality = qualityW / sumIn;
             supportSigma /= sumIn;
+            obsSigma /= sumIn;
 
             var varPos = 0f;
             var varSize = 0f;
@@ -270,7 +311,8 @@ namespace QuestDetect3D
             // Expected metric error of the fused centre: statistical part + floor-height part
             // (a support-height error slides the box along the viewing ray by ≈ the same order).
             var stat = PositionSigma / Mathf.Sqrt(Mathf.Max(1f, nEff));
-            UncertaintyCm = 100f * Mathf.Sqrt(stat * stat + 2f * supportSigma * supportSigma + 0.008f * 0.008f);
+            var single = obsSigma / Mathf.Sqrt(Mathf.Max(1f, nEff));
+            UncertaintyCm = 100f * Mathf.Sqrt(stat * stat + single * single + 2f * supportSigma * supportSigma + 0.008f * 0.008f);
 
             ConfidenceDetail = ConfidenceModel.TrackConfidence(
                 sumIn, meanQuality, PositionSigma, YawSigmaDeg, SizeSigmaRel, InlierFraction, ViewSpreadDeg, Misses, nEff);
@@ -324,10 +366,15 @@ namespace QuestDetect3D
             return Mathf.Atan2(s, c) / k;
         }
 
-        /// <summary>Size expressed in the frame of the mean yaw (swaps x/z for 90° flips when symmetric).</summary>
-        private static Vector3 AlignedSize(in UprightBox box, float meanYaw, float period)
+        /// <summary>
+        /// Size expressed in the frame of the mean yaw. When yaw is only known modulo 90° (depth boxes), an
+        /// observation whose yaw is a quarter turn away from the mean describes the same box with x and z swapped.
+        /// </summary>
+        public static Vector3 AlignedSize(in UprightBox box, float meanYaw, float period)
         {
-            return box.Size;
+            var delta = Mathf.DeltaAngle(meanYaw * Mathf.Rad2Deg, box.Yaw * Mathf.Rad2Deg);
+            var quarter = Mathf.RoundToInt(delta / 90f);
+            return (quarter & 1) != 0 ? new Vector3(box.Size.z, box.Size.y, box.Size.x) : box.Size;
         }
 
         private static float YawDistanceDeg(float a, float b, float period)

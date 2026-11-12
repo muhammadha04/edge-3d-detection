@@ -32,6 +32,12 @@ namespace QuestDetect3D
         private int m_scanQuarterTurns;
         private float m_scanFade;
         private bool m_shown = true;
+        // Quarter turns between the tracker's box frame and the displayed frame (depth boxes: yaw mod 90°).
+        private int m_displayQuarter;
+        // Uncertainty-driven level of detail: box inflated by ~2σ and softened while uncertain.
+        private float m_targetInflation;
+        private float m_shownInflation;
+        private Vector3 m_builtDrawSize = new Vector3(-1f, -1f, -1f);
 
         private Vector3 m_builtSize = new Vector3(-1f, -1f, -1f);
         private Vector3 m_targetPosition;
@@ -138,17 +144,51 @@ namespace QuestDetect3D
             var box = track.Estimate;
             var now = Time.time;
             var yawDeg = box.Yaw * Mathf.Rad2Deg;
+            var boxSize = box.Size;
+            // Pick the equivalent representation (yaw + k·period) closest to what is on screen, so a 90°-symmetric
+            // depth box never visibly spins when its canonical yaw wraps.
+            var periodDeg = track.YawPeriod * Mathf.Rad2Deg;
+            if (periodDeg < 359f)
+            {
+                var reference = m_hasTarget ? m_yawFilter.Value : yawDeg;
+                var bestK = 0;
+                var bestD = float.MaxValue;
+                for (var k = -4; k <= 4; k++)
+                {
+                    var d = Mathf.Abs(Mathf.DeltaAngle(reference, yawDeg + k * periodDeg));
+                    if (d < bestD - 1e-3f)
+                    {
+                        bestD = d;
+                        bestK = k;
+                    }
+                }
+
+                yawDeg += bestK * periodDeg;
+                var quarters = Mathf.RoundToInt(bestK * periodDeg / 90f);
+                m_displayQuarter = ((quarters % 4) + 4) % 4;
+                if ((m_displayQuarter & 1) != 0)
+                {
+                    boxSize = new Vector3(boxSize.z, boxSize.y, boxSize.x);
+                }
+            }
+            else
+            {
+                m_displayQuarter = 0;
+            }
+
             m_targetConfidence = track.Confidence;
+            m_targetInflation = Mathf.Clamp(2f * track.UncertaintyCm / 100f, 0f, 0.25f);
             if (!m_hasTarget)
             {
                 m_positionFilter.Reset(box.BottomCenter, now);
                 m_yawFilter.Reset(yawDeg, now);
-                m_sizeFilter.Reset(box.Size, now);
+                m_sizeFilter.Reset(boxSize, now);
                 m_filteredPosition = box.BottomCenter;
                 m_filteredYawDeg = yawDeg;
-                m_filteredSize = box.Size;
+                m_filteredSize = boxSize;
                 transform.SetPositionAndRotation(box.BottomCenter, Quaternion.Euler(0f, yawDeg, 0f));
-                m_shownSize = box.Size;
+                m_shownSize = boxSize;
+                m_shownInflation = m_targetInflation;
                 m_shownConfidence = m_targetConfidence;
                 m_hasTarget = true;
             }
@@ -159,7 +199,7 @@ namespace QuestDetect3D
                     // The object really moved: snap instead of crawling.
                     m_positionFilter.Reset(box.BottomCenter, now);
                     m_yawFilter.Reset(yawDeg, now);
-                    m_sizeFilter.Reset(box.Size, now);
+                    m_sizeFilter.Reset(boxSize, now);
                     track.Relocated = false;
                 }
 
@@ -167,7 +207,7 @@ namespace QuestDetect3D
                 // Unwrap yaw next to the filtered value so 179° → -179° doesn't spin the box.
                 var unwrapped = m_yawFilter.Value + Mathf.DeltaAngle(m_yawFilter.Value, yawDeg);
                 m_filteredYawDeg = m_yawFilter.Filter(unwrapped, now);
-                m_filteredSize = m_sizeFilter.Filter(box.Size, now);
+                m_filteredSize = m_sizeFilter.Filter(boxSize, now);
             }
 
             m_lastRawPosition = box.BottomCenter;
@@ -218,11 +258,15 @@ namespace QuestDetect3D
             transform.rotation = Quaternion.Slerp(transform.rotation, m_targetRotation, k);
             m_shownSize = Vector3.Lerp(m_shownSize, m_targetSize, k);
             m_shownConfidence = Mathf.Lerp(m_shownConfidence, m_targetConfidence, 1f - Mathf.Exp(-4f * dt));
+            // Blend the uncertainty inflation slowly (≤ ~2 LOD steps per second) so the cue never "pops".
+            m_shownInflation = Mathf.MoveTowards(m_shownInflation, m_scanMode ? 0f : m_targetInflation, 0.25f * dt);
 
-            if (Mathf.Abs(m_shownSize.x - m_builtSize.x) > 0.006f || Mathf.Abs(m_shownSize.y - m_builtSize.y) > 0.006f ||
-                Mathf.Abs(m_shownSize.z - m_builtSize.z) > 0.006f)
+            var drawSize = m_shownSize + new Vector3(2f * m_shownInflation, m_shownInflation, 2f * m_shownInflation);
+            if (Mathf.Abs(drawSize.x - m_builtDrawSize.x) > 0.006f || Mathf.Abs(drawSize.y - m_builtDrawSize.y) > 0.006f ||
+                Mathf.Abs(drawSize.z - m_builtDrawSize.z) > 0.006f)
             {
-                RebuildMeshes(m_shownSize);
+                m_builtDrawSize = drawSize;
+                RebuildMeshes(drawSize);
             }
 
             UpdateScan(dt);
@@ -249,9 +293,11 @@ namespace QuestDetect3D
             }
 
             m_scanFade = Mathf.MoveTowards(m_scanFade, 1f, dt / 0.5f);
-            var odd = (m_scanQuarterTurns & 1) != 0;
+            // Backrest side is measured in the tracker's box frame; convert to the displayed frame.
+            var q = ((m_scanQuarterTurns - m_displayQuarter) % 4 + 4) % 4;
+            var odd = (q & 1) != 0;
             var t = m_scan.transform;
-            t.localRotation = Quaternion.Euler(0f, 90f * m_scanQuarterTurns, 0f);
+            t.localRotation = Quaternion.Euler(0f, 90f * q, 0f);
             // Scale is applied in the mesh frame before rotation → x/z swap for a 90° turn.
             t.localScale = odd
                 ? new Vector3(m_shownSize.z, m_shownSize.y, m_shownSize.x)
@@ -278,6 +324,9 @@ namespace QuestDetect3D
             }
 
             var scanVisible = m_scan != null && m_scan.enabled;
+            // LOD: the more uncertain (inflated), the softer the outline.
+            var u = Mathf.Clamp01(m_shownInflation / 0.2f);
+            alpha *= 1f - 0.45f * u;
             var edgeColor = baseColor;
             edgeColor.a = scanVisible ? 0.3f * alpha : alpha;
             MeshUtil.SetColor(m_edges, m_block, edgeColor);
