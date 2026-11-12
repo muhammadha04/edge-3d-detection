@@ -24,15 +24,23 @@ This document is the spec for the implementing agent. Build on branch `v2.1-yolo
 
 | ID | Method | How | Expected precision | Use |
 |---|---|---|---|---|
-| **M1 Touch** (default) | Controller-tip touch | Physically touch the object's footprint extremes with the controller tip and press the trigger: front-left, front-right, back-right (projected to the floor). Then touch the highest point. 3 floor points give yaw, width and depth; the top point gives height. | ~0.5–1 cm (controller tracking) | Most objects; best accuracy |
+| **M1 Touch** (default) | Front edge + 6 extremes, by controller-tip touch | (1) Touch 2 points on the object's front reference (e.g. the seat's front edge), which sets the facing direction (yaw). (2) Touch the extreme points, at any height: most-forward, most-backward, left-most, right-most, top-most. The floor comes from the floor model. Each box face is placed at the farthest touched point along its axis. No physical corners are needed, which is what makes it work on chairs with splayed legs, curved backs or 5-star bases. | ~0.5–1 cm (controller tracking) | Most objects; best accuracy |
 | **M2 Point** | Ray to depth / floor | Ray from the controller hits floor/depth. Click the same 3 corners and the top. | ~1–3 cm at 1–2 m | Fast; large or far objects |
 | **M3 Marker** | Printed QR code(s) | Tape a QR code flat on the floor at a known corner of the object, using a printed **corner jig** (an L-shaped sheet with the QR code at a measured offset from the inside corner). Push the jig against the object's corner or leg. The box comes from the QR pose plus tape-measured W×D×H. Optionally use 2 jigs on diagonal corners, which gives yaw and the footprint without a tape. | depends on QR pose accuracy (to be measured in the pilot) | Repeatable, operator-independent |
 | **M4 Assisted** | Start from the YOLO + depth box | The detector proposes a box; the user corrects it with the editor. Flagged `assisted=true`. | — | Speed only; never the primary ground truth |
+
+**Definition of the ground-truth box (write this on the rule sheet):** the tightest **upright** box that sits on the floor, is aligned with the object's front, and contains the whole object. Armrests, casters and star-base tips count; cushions count as they are when nobody is sitting on them. Its corners usually float in the air, so methods mark **extremes and faces**, not corners.
 
 **Common box editor** (after any method):
 - **Gizmo:** move along x/z, rotate around y, resize w/d/h with the thumbsticks.
 - **Steps:** coarse 1 cm / 1°, fine 2 mm / 0.2° (toggle with the grip).
 - **Snapping:** bottom to the floor (on by default); "front" face marked with an arrow and switchable in 90° steps (needed for chairs).
+- **Face push:** point at a face, hold the grip and push or pull it along its normal.
+- **Live checks while editing:**
+  - faces drawn as translucent walls;
+  - depth points of the object that fall outside the box shown in **red** (from a depth-ray grid inside the box, expanded by 10 cm);
+  - while touching, a **plumb line** drops from the controller tip to the floor, with its footprint dot.
+- **Board aid (optional):** hold a flat board or carpenter's square against a side and touch the board instead of a curved part. The app accepts any touched point, so no special mode is needed.
 
 **Controller-tip calibration** (once per controller, stored):
 1. Touch the 4 printed corners of the reference QR code on the floor (its pose is known) with the controller tip.
@@ -185,3 +193,45 @@ Reuse: `UprightBox`, `CameraModel`, `IDepthRaycaster`, `Log`, `SessionMenu` (add
 - **Storage:** about 45 MB/min of RGB at 5 Hz plus about 60 MB/min of depth. Warn below 2 GB free.
 - **Performance:** keep the detector optional during recording; JPEG encoding on a worker thread; never block the main thread.
 - **Logs:** every annotation and edit goes to `events.jsonl` (an audit trail for the thesis).
+
+## 11. Operator guide: what you do in the app (1-chair pilot)
+**Before you put the headset on**
+1. Print `reference_qr.pdf`, `drift_qr.pdf` and 2 × `corner_jig.pdf` at 100 % scale. Check the 10 cm scale bar with a ruler.
+2. Tape the reference QR code flat on the floor about 0.5–1 m from the chair, and the drift QR code 2 m or more away.
+3. Measure the chair with a tape (width at the widest point, depth from the front-most to the back-most point, height to the top), take a phone photo, and fill in the rule sheet (what counts as front, armrests, casters).
+4. Plug in the headset, run `GuardianOff.bat`, then start the app (or `DeployOnly.bat`).
+
+**In the headset**
+
+| Step | Screen | What you do | What you should see |
+|---|---|---|---|
+| 1 | Start menu | Select **Mode: Annotate**, then **Start** | Annotate home panel (Room / Catalog / Annotate / Verify / Record / Export) |
+| 2 | Room | **New room** → type "Lab" (virtual keyboard) → **Scan reference**: look at the reference QR code from 0.5–1 m and hold still for ~2 s | Coloured axes on the QR code, "σ pos x.x mm", **Save** enabled |
+| 3 | Room | **Drift check**: look at the drift QR code for ~2 s | "Drift ref saved" |
+| 4 | Catalog | **Add object** → name "Chair_01", category **Chair**, enter the tape W/D/H in cm, symmetry **none**, **Photo** (look at the chair, press A) | Chair_01 in the list with "0 annotations" |
+| 5 | Annotate | **Calibrate tip** (once per controller): touch the 4 printed corners of the reference QR code with the controller tip, trigger on each | "Tip offset saved, residual x mm" (aim for < 3 mm; repeat if higher) |
+| 6 | Annotate | Select **Chair_01**, method **Touch**, toggle **Blind** on | Step prompt: "Touch FRONT edge, point 1" |
+| 7 | Annotate | Touch 2 points along the seat's front edge (trigger on each) | An arrow on the floor showing the chair's front direction |
+| 8 | Annotate | Touch the extremes when prompted: **front-most, back-most, left-most, right-most, top-most**. A plumb line to the floor helps on armrests and curved backs. Touch again to replace a point; the app keeps the farthest one along each axis. | The box grows as you touch; faces shown as translucent walls |
+| 9 | Annotate (editor) | Walk once around the chair. **Red dots** = chair poking out → grab that face (grip) and push it out. Gaps → pull it in. Use the thumbstick for fine moves (hold grip for 2 mm / 0.2° steps). Check that the **front arrow** points to the seat front. | No red dots, faces just touching the chair; HUD shows "box vs tape: ΔW ΔD ΔH" within ±1 cm |
+| 10 | Annotate | **Confirm** → rate 1–5 how sure you are → **Repeat** | Counter "1/3"; the previous box disappears (blind) |
+| 11 | Annotate | Repeat steps 7–10 twice more (take the headset off or walk away between repeats) | "3/3, spread: centre x.x cm, yaw x.x°, size x.x cm" |
+| 12 | Annotate | Method **Point**: same prompts, but aim the ray at the floor or chair instead of touching. Do 3 blind repeats. | Same spread readout for M2 |
+| 13 | Annotate | Method **Marker**: push a corner jig against the front-left leg, a second jig against the back-right leg, then look at both jigs for ~2 s each. Do 3 repeats, re-placing the jigs each time. | Box from the jigs + tape dims, spread readout for M3 |
+| 14 | Verify | Walk around: all accepted boxes overlaid (one colour per method). Mark **OK** or **Redo**. | Boxes stay on the chair from every side |
+| 15 | Record | Settings: 5 Hz, depth on, detector on → **Start**. Walk slowly around the chair for 2 min at 0.7–3 m, then **Stop**. Repeat with the lights dimmed. | "Recording … MB, dropped 0" |
+| 16 | Room | **Drift check** again on the drift QR code | "Drift: x mm" (expect < 1–2 cm) |
+| 17 | Export | **Export room + sessions** | Path shown; "Ready to pull" |
+
+**After (on the PC)**
+1. Run `PullSession.bat` to copy the exported data.
+2. Run `python Tools/annotation/repeatability.py <room>` to get the per-method spread table (the decision rule in section 9).
+3. Run `python Tools/annotation/overlay.py <session>` to get an MP4 with the ground-truth boxes on the recorded frames. Check that they align.
+4. Run `python Tools/annotation/evaluate.py <session>` to get YOLO + depth error vs ground truth (centre, yaw, size, 3D IoU) and confidence vs error.
+5. Send the reports to Claude to choose the method and plan the full dataset.
+
+**If something goes wrong**
+- **QR code not detected:** print it bigger (20 cm), get closer, add more light, and check that the Spatial Data permission is granted.
+- **Tip residual above 3 mm:** recalibrate and touch the QR corners precisely.
+- **Large spread on one side only:** make the rule sheet more precise for that side (e.g. "armrest pad, not the bolt").
+- **Boxes drift between sessions:** re-scan the reference QR code. If drift is above 2 cm, note it and redo the session.

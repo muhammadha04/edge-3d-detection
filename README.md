@@ -67,6 +67,13 @@ The FP16 model is 4.3 MB. Its boxes match FP32 with IoU ≥ 0.999.
 | Backrest side used to orient the scan | 5 / 5 correct |
 | YOLO FP16 in Unity vs onnxruntime | 4 / 4 match |
 
+## Ground-truth annotation (planned)
+An in-headset annotation and recording mode is specified in [`Docs/annotation-platform-plan.md`](Docs/annotation-platform-plan.md). It covers:
+- the box definition and the annotation methods: Touch (front edge + 6 extremes), Point, QR marker jigs and Assisted;
+- the reference-QR room frame and drift check;
+- the recording format, Python tools and implementation milestones;
+- a **step-by-step operator guide** for the 1-chair pilot (section 11).
+
 ## Build
 Run `BuildWatcher.bat` (it watches `Builds/trigger_*`) or `BuildAndDeploy.bat`. The build exports the FP16 model, runs the self-test, rebuilds `Scenes/Detect3D.unity` and produces `Builds/QuestDetect3D.apk` (`com.amplilab.questdetect3d`, 2.1.0). Logs are written to `qd3d_log.txt` on the headset; pull them with `PullLog.bat`. They include `yolo_fit` lines showing every term of each fit.
 
