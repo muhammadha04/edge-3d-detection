@@ -398,104 +398,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 847150197}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &250250641
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 250250646}
-  - component: {fileID: 250250645}
-  - component: {fileID: 250250644}
-  - component: {fileID: 250250643}
-  - component: {fileID: 250250642}
-  m_Layer: 0
-  m_Name: Objectron Detector
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &250250642
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 250250641}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: abe5a3dad9ccca844b4a4c73a6b840c9, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::QuestDetect3D.ObjectronDetector
-  m_graph: {fileID: 250250645}
-  m_pool: {fileID: 250250644}
-  m_imageSource: {fileID: 250250643}
-  m_bootstrap: {fileID: 502839773}
-  m_maxObjects: 4
-  m_minDetectionConfidence: 0.4
-  m_minTrackingConfidence: 0.6
-  m_resultTimeoutSec: 1.5
---- !u!114 &250250643
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 250250641}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ee729754a135f4b45a808ee28072869b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::QuestDetect3D.PcaImageSource
---- !u!114 &250250644
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 250250641}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d5da564da19cb6b7d8e4f97f269edc5d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Mediapipe.Unity.TextureFramePool
-  _poolSize: 10
---- !u!114 &250250645
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 250250641}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 16c2b29e89bd42ff3a18f0dcb2443a00, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Mediapipe.Unity.Objectron.ObjectronGraph
-  _cpuConfig: {fileID: 4900000, guid: 8f3388933fd0d988bada4485c36473b1, type: 3}
-  _gpuConfig: {fileID: 4900000, guid: b879658ff2b804213844d38d49d1d85a, type: 3}
-  _openGlEsConfig: {fileID: 4900000, guid: 8d3e2ce0c5dd4ac1fbd438fc86427ec4, type: 3}
-  _timeoutMicrosec: 0
-  category: 1
-  maxNumObjects: 4
---- !u!4 &250250646
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 250250641}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &256469435
 GameObject:
   m_ObjectHideFlags: 0
@@ -560,54 +462,6 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1463857855}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &502839772
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 502839774}
-  - component: {fileID: 502839773}
-  m_Layer: 0
-  m_Name: MediaPipe Bootstrap
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &502839773
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 502839772}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f4d846393f8d9f20fa64b924b0d95e68, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Mediapipe.Unity.Bootstrap
-  _defaultImageSource: 3
-  _preferableInferenceMode: 0
-  _assetLoaderType: 0
-  _enableGlog: 0
---- !u!4 &502839774
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 502839772}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &632844191
 GameObject:
@@ -678,6 +532,104 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 256469436}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &730534377
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 730534382}
+  - component: {fileID: 730534381}
+  - component: {fileID: 730534380}
+  - component: {fileID: 730534379}
+  - component: {fileID: 730534378}
+  m_Layer: 0
+  m_Name: Objectron Detector
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &730534378
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 730534377}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: abe5a3dad9ccca844b4a4c73a6b840c9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::QuestDetect3D.ObjectronDetector
+  m_graph: {fileID: 730534381}
+  m_pool: {fileID: 730534380}
+  m_imageSource: {fileID: 730534379}
+  m_bootstrap: {fileID: 874474675}
+  m_maxObjects: 4
+  m_minDetectionConfidence: 0.4
+  m_minTrackingConfidence: 0.6
+  m_resultTimeoutSec: 1.5
+--- !u!114 &730534379
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 730534377}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee729754a135f4b45a808ee28072869b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::QuestDetect3D.PcaImageSource
+--- !u!114 &730534380
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 730534377}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5da564da19cb6b7d8e4f97f269edc5d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Mediapipe.Unity.TextureFramePool
+  _poolSize: 10
+--- !u!114 &730534381
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 730534377}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16c2b29e89bd42ff3a18f0dcb2443a00, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Mediapipe.Unity.Objectron.ObjectronGraph
+  _cpuConfig: {fileID: 4900000, guid: 8f3388933fd0d988bada4485c36473b1, type: 3}
+  _gpuConfig: {fileID: 4900000, guid: b879658ff2b804213844d38d49d1d85a, type: 3}
+  _openGlEsConfig: {fileID: 4900000, guid: 8d3e2ce0c5dd4ac1fbd438fc86427ec4, type: 3}
+  _timeoutMicrosec: 0
+  category: 1
+  maxNumObjects: 4
+--- !u!4 &730534382
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 730534377}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &733445207
 GameObject:
@@ -773,7 +725,7 @@ Transform:
   - {fileID: 204397962}
   m_Father: {fileID: 256469436}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &874093595
+--- !u!1 &874474674
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -781,40 +733,38 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 874093597}
-  - component: {fileID: 874093596}
+  - component: {fileID: 874474676}
+  - component: {fileID: 874474675}
   m_Layer: 0
-  m_Name: QuestDetect3D
+  m_Name: MediaPipe Bootstrap
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &874093596
+--- !u!114 &874474675
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 874093595}
+  m_GameObject: {fileID: 874474674}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 090753a5ec3d62c4681de8947eb1011b, type: 3}
+  m_Script: {fileID: 11500000, guid: f4d846393f8d9f20fa64b924b0d95e68, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::QuestDetect3D.Detect3DApp
-  m_camera: {fileID: 1373946501}
-  m_raycast: {fileID: 1721288809}
-  m_detector: {fileID: 250250642}
-  m_overlayShader: {fileID: 4800000, guid: 0cd5a224e7a26b240b1d0fc8f98dd0ad, type: 3}
-  m_startCategory: 0
-  m_useSpatialAnchors: 1
---- !u!4 &874093597
+  m_EditorClassIdentifier: Assembly-CSharp::Mediapipe.Unity.Bootstrap
+  _defaultImageSource: 3
+  _preferableInferenceMode: 0
+  _assetLoaderType: 0
+  _enableGlog: 0
+--- !u!4 &874474676
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 874093595}
+  m_GameObject: {fileID: 874474674}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -1904,6 +1854,57 @@ Transform:
   m_Children: []
   m_Father: {fileID: 883777609}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2138965316
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2138965318}
+  - component: {fileID: 2138965317}
+  m_Layer: 0
+  m_Name: QuestDetect3D
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2138965317
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2138965316}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 090753a5ec3d62c4681de8947eb1011b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::QuestDetect3D.Detect3DApp
+  m_camera: {fileID: 1373946501}
+  m_raycast: {fileID: 1721288809}
+  m_detector: {fileID: 730534378}
+  m_yoloModel: {fileID: 5022602860645237092, guid: 4f365c64858125f4cb9e602dc04713ae, type: 3}
+  m_yoloLabels: {fileID: 4900000, guid: c01c64149c7930b45a76559caabd5c78, type: 3}
+  m_overlayShader: {fileID: 4800000, guid: 0cd5a224e7a26b240b1d0fc8f98dd0ad, type: 3}
+  m_useSpatialAnchors: 1
+--- !u!4 &2138965318
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2138965316}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1019656467722773290
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2031,6 +2032,6 @@ SceneRoots:
   - {fileID: 1721288808}
   - {fileID: 1373946500}
   - {fileID: 1884619606}
-  - {fileID: 502839774}
-  - {fileID: 250250646}
-  - {fileID: 874093597}
+  - {fileID: 874474676}
+  - {fileID: 730534382}
+  - {fileID: 2138965318}
