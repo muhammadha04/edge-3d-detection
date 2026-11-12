@@ -16,8 +16,8 @@ namespace QuestDetect3D.EditorTools
     {
         public const string PackageName = "com.amplilab.questdetect3d";
         public const string ApkPath = "Builds/QuestDetect3D.apk";
-        public const string Version = "2.2.8";
-        public const int VersionCode = 13;
+        public const string Version = "2.2.9";
+        public const int VersionCode = 14;
         private const string BuildInfoPath = "Assets/QuestDetect3D/Resources/qd3d_buildinfo.json";
 
         [MenuItem("QuestDetect3D/Build APK")]

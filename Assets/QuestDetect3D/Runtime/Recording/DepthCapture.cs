@@ -3,9 +3,17 @@
 //   ndc_x = 2 (col + 0.5) / W − 1,   ndc_y = 2 (row + 0.5) / H − 1,   ndc_z = ZB.x / depth_m − ZB.y
 //   world = (M⁻¹ · [ndc_x, ndc_y, ndc_z, 1]) / w        with M = reprojection_matrix (world → depth clip space)
 // (Meta's EnvironmentOcclusion.cginc does the forward direction: uv = (clip.xy / clip.w + 1) / 2.)
-// The copy runs in a compute shader; the readback is asynchronous (no main-thread stall).
+//
+// Where the texture comes from: Meta's EnvironmentDepthManager raises an (internal) onDepthTextureUpdate event
+// with the provider's RenderTexture every time a new depth frame arrives; we subscribe to it by reflection. As a
+// fallback the global shader texture _EnvironmentDepthTexture is used. The texture is DEPTH-ONLY (no colour
+// buffer), so it is bound to the compute shader with RenderTextureSubElement.Depth. A Texture2DArray (one slice per
+// eye, OpenXR) uses kernel CopyDepth, a plain 2D texture CopyDepth2D. The readback is asynchronous.
+// Every failure has a reason (LastError) that the recorder logs and shows on the Record screen.
 using System;
+using System.Reflection;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 
 namespace QuestDetect3D.Recording
@@ -22,50 +30,99 @@ namespace QuestDetect3D.Recording
 
     public sealed class DepthCapture : IDisposable
     {
+        private const float ReadbackTimeout = 2f;
         private static readonly int DepthTextureId = Shader.PropertyToID("_EnvironmentDepthTexture");
+        private static readonly int DepthTexture2DId = Shader.PropertyToID("_EnvironmentDepthTexture2D");
         private static readonly int ReprojectionId = Shader.PropertyToID("_EnvironmentDepthReprojectionMatrices");
         private static readonly int ZBufferParamsId = Shader.PropertyToID("_EnvironmentDepthZBufferParams");
         private static readonly int OutId = Shader.PropertyToID("_Out");
         private static readonly int SizeId = Shader.PropertyToID("_Size");
 
         private readonly ComputeShader m_shader;
-        private readonly int m_kernel;
+        private readonly int m_kernelArray = -1;
+        private readonly int m_kernel2D = -1;
         private ComputeBuffer m_buffer;
         private int m_size;
         private bool m_pending;
+        private float m_pendingSince;
+        private RenderTexture m_eventTexture;
+        private Component m_manager;
+        private Delegate m_handler;
+        private EventInfo m_event;
 
+        /// <summary>Loads the compute shader and subscribes to the depth manager's texture updates.</summary>
         public DepthCapture()
         {
             m_shader = Resources.Load<ComputeShader>("QD3D_DepthCopy");
             if (m_shader != null)
             {
-                m_kernel = m_shader.FindKernel("CopyDepth");
+                m_kernelArray = m_shader.FindKernel("CopyDepth");
+                m_kernel2D = m_shader.FindKernel("CopyDepth2D");
             }
             else
             {
+                LastError = "compute shader Resources/QD3D_DepthCopy missing";
                 Log.Error("ann_depth_shader_missing Resources/QD3D_DepthCopy.compute");
             }
+
+            Subscribe();
         }
 
         public bool IsPending => m_pending;
         public string LastError { get; private set; } = "";
+        public int Failures { get; private set; }
 
-        public bool IsAvailable => m_shader != null && SystemInfo.supportsComputeShaders &&
-                                   Shader.GetGlobalTexture(DepthTextureId) is RenderTexture rt && rt != null && rt.IsCreated();
+        /// <summary>Where the texture came from and what it is (logged once per recording).</summary>
+        public string Describe()
+        {
+            var t = CurrentTexture(out var source);
+            var matrices = Shader.GetGlobalMatrixArray(ReprojectionId);
+            return t == null
+                ? $"source=none event_subscribed={m_handler != null} manager={(m_manager != null)} compute={SystemInfo.supportsComputeShaders}"
+                : $"source={source} size={t.width}x{t.height} dim={t.dimension} volume={t.volumeDepth} color={t.graphicsFormat} " +
+                  $"depth={t.depthStencilFormat} created={t.IsCreated()} matrices={(matrices?.Length ?? 0)} compute={SystemInfo.supportsComputeShaders}";
+        }
 
-        /// <summary>Copies the current left-eye depth to a buffer and reads it back asynchronously; onReady gets metres + matrices.</summary>
+        /// <summary>Copies the current left-eye depth to a buffer and reads it back asynchronously; onReady gets metres + matrices.
+        /// False (with LastError) when nothing could be started.</summary>
         public bool TryCapture(Action<DepthFrame> onReady)
         {
-            if (m_pending || m_shader == null)
+            if (m_pending)
             {
-                return false;
+                if (Time.realtimeSinceStartup - m_pendingSince < ReadbackTimeout)
+                {
+                    return false;
+                }
+
+                Fail("depth readback did not complete within 2 s (reset)");
+                m_pending = false;
             }
 
-            var texture = Shader.GetGlobalTexture(DepthTextureId) as RenderTexture;
-            if (texture == null || !texture.IsCreated())
+            if (m_shader == null)
             {
-                LastError = "no environment depth texture";
-                return false;
+                return Fail("compute shader missing");
+            }
+
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                return Fail("compute shaders not supported");
+            }
+
+            var texture = CurrentTexture(out _);
+            if (texture == null)
+            {
+                return Fail("no environment depth texture yet (event and global both empty)");
+            }
+
+            if (!texture.IsCreated())
+            {
+                return Fail("depth texture not created");
+            }
+
+            var matrices = Shader.GetGlobalMatrixArray(ReprojectionId);
+            if (matrices == null || matrices.Length == 0)
+            {
+                return Fail("no _EnvironmentDepthReprojectionMatrices");
             }
 
             var size = texture.width;
@@ -83,13 +140,6 @@ namespace QuestDetect3D.Recording
                 CaptureRealtime = Time.realtimeSinceStartup,
                 CaptureUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             };
-            var matrices = Shader.GetGlobalMatrixArray(ReprojectionId);
-            if (matrices == null || matrices.Length == 0)
-            {
-                LastError = "no reprojection matrices";
-                return false;
-            }
-
             var m = matrices[0];
             for (var r = 0; r < 4; r++)
             {
@@ -99,26 +149,105 @@ namespace QuestDetect3D.Recording
                 }
             }
 
-            m_shader.SetTexture(m_kernel, DepthTextureId, texture);
-            m_shader.SetVector(ZBufferParamsId, frame.ZBufferParams);
-            m_shader.SetInt(SizeId, size);
-            m_shader.SetBuffer(m_kernel, OutId, m_buffer);
-            var groups = (size + 7) / 8;
-            m_shader.Dispatch(m_kernel, groups, groups, 1);
+            try
+            {
+                var isArray = texture.dimension == TextureDimension.Tex2DArray;
+                var kernel = isArray ? m_kernelArray : m_kernel2D;
+                var depthOnly = texture.graphicsFormat == GraphicsFormat.None;
+                var element = depthOnly ? RenderTextureSubElement.Depth : RenderTextureSubElement.Default;
+                m_shader.SetTexture(kernel, isArray ? DepthTextureId : DepthTexture2DId, texture, 0, element);
+                m_shader.SetVector(ZBufferParamsId, frame.ZBufferParams);
+                m_shader.SetInt(SizeId, size);
+                m_shader.SetBuffer(kernel, OutId, m_buffer);
+                var groups = (size + 7) / 8;
+                m_shader.Dispatch(kernel, groups, groups, 1);
+            }
+            catch (Exception e)
+            {
+                return Fail("dispatch failed: " + e.Message);
+            }
+
             m_pending = true;
+            m_pendingSince = Time.realtimeSinceStartup;
             AsyncGPUReadback.Request(m_buffer, request =>
             {
                 m_pending = false;
                 if (request.hasError)
                 {
-                    LastError = "depth readback error";
+                    Fail("depth readback error");
                     return;
                 }
 
                 frame.Metres = request.GetData<float>().ToArray();
+                LastError = "";
                 onReady(frame);
             });
             return true;
+        }
+
+        /// <summary>Newest depth texture: from the manager's update event, else the global shader texture.</summary>
+        private RenderTexture CurrentTexture(out string source)
+        {
+            if (m_handler == null)
+            {
+                Subscribe(); // the manager may be created after the recorder (EnvironmentRaycastManager adds it)
+            }
+
+            if (m_eventTexture != null)
+            {
+                source = "manager_event";
+                return m_eventTexture;
+            }
+
+            source = "global";
+            return Shader.GetGlobalTexture(DepthTextureId) as RenderTexture;
+        }
+
+        /// <summary>Subscribes to EnvironmentDepthManager.onDepthTextureUpdate (internal) by reflection.</summary>
+        private void Subscribe()
+        {
+            try
+            {
+                var type = Type.GetType("Meta.XR.EnvironmentDepth.EnvironmentDepthManager, Meta.XR.EnvironmentDepth");
+                if (type == null)
+                {
+                    return;
+                }
+
+                m_manager = UnityEngine.Object.FindAnyObjectByType(type) as Component;
+                if (m_manager == null)
+                {
+                    return;
+                }
+
+                m_event = type.GetEvent("onDepthTextureUpdate", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                var add = m_event?.GetAddMethod(true);
+                if (add == null)
+                {
+                    return;
+                }
+
+                Action<RenderTexture> handler = rt => m_eventTexture = rt;
+                m_handler = handler;
+                add.Invoke(m_manager, new object[] { handler });
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"ann_depth_subscribe_failed {e.GetType().Name}: {e.Message}");
+                m_handler = null;
+            }
+        }
+
+        private bool Fail(string reason)
+        {
+            Failures++;
+            if (LastError != reason)
+            {
+                Log.Warn($"ann_depth_fail reason=\"{reason}\" {Describe()}");
+            }
+
+            LastError = reason;
+            return false;
         }
 
         /// <summary>Metres → uint16 millimetres (0 = invalid, clamped to 65.535 m).</summary>
@@ -134,9 +263,22 @@ namespace QuestDetect3D.Recording
             return mm;
         }
 
-        /// <summary>Releases the GPU buffer.</summary>
+        /// <summary>Releases the GPU buffer and the event subscription.</summary>
         public void Dispose()
         {
+            try
+            {
+                if (m_handler != null && m_manager != null)
+                {
+                    m_event?.GetRemoveMethod(true)?.Invoke(m_manager, new object[] { m_handler });
+                }
+            }
+            catch (Exception)
+            {
+                // manager already destroyed
+            }
+
+            m_handler = null;
             m_buffer?.Dispose();
             m_buffer = null;
         }

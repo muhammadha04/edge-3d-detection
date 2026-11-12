@@ -81,6 +81,10 @@ namespace QuestDetect3D.Recording
         public string LastSessionDir { get; private set; }
         public string LastSummary { get; private set; } = "";
 
+        /// <summary>Why depth is not being recorded (empty when it is, or when depth is off).</summary>
+        public string DepthError => m_depth != null ? m_depth.LastError : m_lastDepthError;
+        private string m_lastDepthError = "";
+
         /// <summary>Creates sessions/&lt;id&gt;/, writes session.json and starts capturing at the chosen rate. Record 2-min walk-arounds at 0.7–3 m.</summary>
         public bool Start(RecordSettings settings, out string error)
         {
@@ -112,6 +116,7 @@ namespace QuestDetect3D.Recording
             m_worker = new RecorderWorker(MaxPendingJobs);
             m_frames = new PcaFrameSource(ctx.Camera);
             m_depth = settings.Depth ? new DepthCapture() : null;
+            m_lastDepthError = "";
             m_frameIndex = 0;
             m_framesWritten = m_depthWritten = m_dropped = m_detectorFrames = m_poseRowsTotal = 0;
             m_encodeOnMain = false;
@@ -130,6 +135,10 @@ namespace QuestDetect3D.Recording
             CheckDisk();
             Log.Info($"ann_rec_start id={SessionId} rate={settings.RateHz} depth={settings.Depth} detector={settings.Detector} " +
                      $"lighting={settings.Lighting} free_gb={FreeGb:F1}");
+            if (m_depth != null)
+            {
+                Log.Info($"ann_rec_depth_source {m_depth.Describe()}");
+            }
             return true;
         }
 
@@ -149,6 +158,8 @@ namespace QuestDetect3D.Recording
             var json = m_sessionJson;
             var elapsed = Time.realtimeSinceStartup - m_startRealtime;
             var depth = m_depth;
+            m_lastDepthError = depth != null ? depth.LastError : "";
+            var depthFailures = depth != null ? depth.Failures : 0;
             m_depth = null;
             Log.Info($"ann_rec_stopping id={SessionId} pending={worker.Pending}");
             Task.Run(() =>
@@ -170,6 +181,8 @@ namespace QuestDetect3D.Recording
                         ["worker_errors"] = worker.Errors,
                         ["worker_last_error"] = worker.LastError,
                         ["worker_finished"] = finished,
+                        ["depth_failures"] = depthFailures,
+                        ["depth_last_error"] = m_lastDepthError,
                     };
                     AnnotationStore.Save(Path.Combine(dir, "session.json"), json);
                     worker.Dispose();

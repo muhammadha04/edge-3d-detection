@@ -3,4 +3,8 @@
   <assembly fullname="Assembly-CSharp">
     <namespace fullname="QuestDetect3D.Annotation" preserve="all" />
   </assembly>
+  <!-- DepthCapture subscribes to EnvironmentDepthManager.onDepthTextureUpdate (internal) by reflection. -->
+  <assembly fullname="Meta.XR.EnvironmentDepth">
+    <type fullname="Meta.XR.EnvironmentDepth.EnvironmentDepthManager" preserve="all" />
+  </assembly>
 </linker>

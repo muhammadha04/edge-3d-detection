@@ -142,6 +142,10 @@ namespace QuestDetect3D.Annotation
                 var warn = rec.LowDisk ? "  <color=#FF6B6B>LOW DISK (< 2 GB)</color>" : "";
                 var det = rec.Settings.Detector ? $"  detector frames {rec.DetectorFrames} ({m_mode.Context.DetectorStatus?.Invoke()})" : "";
                 var err = rec.WorkerErrors > 0 ? $"\n<color=#FF6B6B>write errors {rec.WorkerErrors}: {rec.WorkerLastError}</color>" : "";
+                if (rec.Settings.Depth && rec.DepthWritten == 0 && rec.Elapsed > 2f)
+                {
+                    err += $"\n<color=#FF6B6B>DEPTH NOT RECORDED: {rec.DepthError}</color>";
+                }
                 return $"<color=#FF6B6B>● REC</color> {rec.Elapsed:F0} s   {rec.Bytes / 1e6:F0} MB   frames {rec.FramesWritten}   " +
                        $"depth {rec.DepthWritten}   dropped {rec.Dropped}\n{free}{warn}{det}{err}";
             }

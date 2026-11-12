@@ -1,14 +1,29 @@
-// Copies the left-eye Quest environment depth (Texture2DArray slice 0) into a float buffer of LINEAR depth in
-// metres (view-space z of the depth camera), using the same conversion as Meta's occlusion shaders:
+// Copies the left-eye Quest environment depth into a float buffer of LINEAR depth in metres (view-space z of the
+// depth camera), using the same conversion as Meta's occlusion shaders:
 //   ndc = raw * 2 - 1;  linear = ZBufferParams.x / (ndc + ZBufferParams.y)
 // Texel (x, y) is written to index x + y * Size (row y = texture row y, i.e. uv.v = (y + 0.5) / Size).
-// Invalid / far texels (raw >= 1) are written as 0.
+// Invalid / far texels (raw >= 1 or 0) are written as 0.
+// Two kernels: the depth texture is a Texture2DArray (one slice per eye) with the OpenXR provider; CopyDepth2D
+// handles a plain 2D depth texture (other providers / masked depth).
 #pragma kernel CopyDepth
+#pragma kernel CopyDepth2D
 
 Texture2DArray<float> _EnvironmentDepthTexture;
+Texture2D<float> _EnvironmentDepthTexture2D;
 float4 _EnvironmentDepthZBufferParams;
 uint _Size;
 RWStructuredBuffer<float> _Out;
+
+float Linearise(float raw)
+{
+    if (raw <= 0.0 || raw >= 0.99999)
+    {
+        return 0.0;
+    }
+
+    const float ndc = raw * 2.0 - 1.0;
+    return _EnvironmentDepthZBufferParams.x / (ndc + _EnvironmentDepthZBufferParams.y);
+}
 
 [numthreads(8, 8, 1)]
 void CopyDepth(uint3 id : SV_DispatchThreadID)
@@ -18,13 +33,16 @@ void CopyDepth(uint3 id : SV_DispatchThreadID)
         return;
     }
 
-    const float raw = _EnvironmentDepthTexture[uint3(id.x, id.y, 0)];
-    float linearDepth = 0.0;
-    if (raw > 0.0 && raw < 0.99999)
+    _Out[id.x + id.y * _Size] = Linearise(_EnvironmentDepthTexture[uint3(id.x, id.y, 0)]);
+}
+
+[numthreads(8, 8, 1)]
+void CopyDepth2D(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Size || id.y >= _Size)
     {
-        const float ndc = raw * 2.0 - 1.0;
-        linearDepth = _EnvironmentDepthZBufferParams.x / (ndc + _EnvironmentDepthZBufferParams.y);
+        return;
     }
 
-    _Out[id.x + id.y * _Size] = linearDepth;
+    _Out[id.x + id.y * _Size] = Linearise(_EnvironmentDepthTexture2D[uint2(id.x, id.y)]);
 }
