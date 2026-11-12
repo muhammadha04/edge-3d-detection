@@ -57,7 +57,7 @@ compile() { # out.exe sources...
 if [ "$1" = "replay" ]; then
   shift
   OUT="$OUTDIR/qd3d_replay.exe"
-  compile "$OUT" "${CORE[@]}" "$ROOT/Tools/offline/RecordedDepthRaycaster.cs" "$ROOT/Tools/offline/ReplayRunner.cs"
+  compile "$OUT" "${CORE[@]}" "$RT/Recording/RecordJson.cs" "$ROOT/Tools/offline/RecordedDepthRaycaster.cs" "$ROOT/Tools/offline/ReplayRunner.cs"
   "$MONO" "$(P "$OUT")" "$@"
   exit $?
 fi
