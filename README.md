@@ -36,6 +36,8 @@ The detector is set to **chairs only**.
 | Y (left) | Reset all objects |
 | X (left) | Hide / show HUD |
 
+To walk around freely in passthrough, run `GuardianOff.bat` (USB, developer mode) to turn the boundary off; `GuardianOff.bat on` turns it back on. It resets when the headset reboots.
+
 Tips: glance at the floor for a second at start-up. Keep objects 1–3 m away. Walking around an object raises its confidence.
 
 ---
