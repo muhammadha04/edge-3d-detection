@@ -12,9 +12,10 @@ namespace QuestDetect3D.EditorTools
 {
     public static class YoloModelExport
     {
-        public const string OnnxPath = "Assets/PassthroughCameraApiSamples/MultiObjectDetection/SentisInference/Model/yolov9onnx.onnx";
+        // YOLO11n (Ultralytics, AGPL-3.0) exported at 320×320, opset 17: ~4× fewer pixels than YOLOv9-t@640.
+        public const string OnnxPath = "Assets/QuestDetect3D/Models/yolo11n_320.onnx";
         public const string ExportFolder = "Assets/QuestDetect3D/Models";
-        public const string Fp16Path = ExportFolder + "/yolov9t_fp16.sentis";
+        public const string Fp16Path = ExportFolder + "/yolo11n_320_fp16.sentis";
 
         public enum Precision
         {

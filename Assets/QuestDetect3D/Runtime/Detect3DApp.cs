@@ -650,7 +650,7 @@ namespace QuestDetect3D
                 m_hudText.Append(m_yolo == null
                     ? "YOLO model missing\n"
                     : m_yolo.IsReady
-                        ? $"YOLOv9-t {m_yolo.InferenceHz:F1} Hz · {m_yolo.LastInferenceMs:F0} ms · {(m_yolo.Backend == BackendType.CPU ? "CPU" : "GPU")}\n"
+                        ? $"YOLO11n {m_yolo.InferenceHz:F1} Hz · {m_yolo.LastInferenceMs:F0} ms · {(m_yolo.Backend == BackendType.CPU ? "CPU" : "GPU")}\n"
                         : $"YOLO: {m_yolo.Status}\n");
             }
             else if (m_detector == null || !m_detector.IsReady)

@@ -44,14 +44,14 @@ namespace QuestDetect3D
 
         public Vector2Int InputSize { get; }
         public IReadOnlyList<string> Labels => m_labels;
-        public string ModelName => "YOLOv9-t (Inference Engine)";
+        public string ModelName => "YOLO11n@320 (Inference Engine)";
         public bool IsReady { get; private set; }
         public bool IsBusy { get; private set; }
         public string Status { get; private set; }
         public BackendType Backend => m_backend;
         public float LastInferenceMs { get; private set; }
         public float InferenceHz => m_hzEma;
-        public int LayersPerFrame { get; set; } = 20;
+        public int LayersPerFrame { get; set; } = 40;
         public float ScoreThreshold { get; set; } = YoloDecode.DefaultScoreThreshold;
         public float IouThreshold { get; set; } = YoloDecode.DefaultIouThreshold;
 
@@ -102,33 +102,33 @@ namespace QuestDetect3D
             {
                 TextureConverter.ToTensor(texture, input, new TextureTransform());
 
-                // Spread the network over several rendered frames.
-                var schedule = m_worker.ScheduleIterable(input);
-                var layers = 0;
-                while (schedule.MoveNext())
+                if (m_backend == BackendType.CPU)
                 {
-                    if (++layers % Mathf.Max(1, LayersPerFrame) == 0)
+                    // CPU: spread layers over frames so the render loop never stalls.
+                    var schedule = m_worker.ScheduleIterable(input);
+                    var layers = 0;
+                    while (schedule.MoveNext())
                     {
-                        frame.LayerFrames++;
-                        yield return null;
+                        if (++layers % Mathf.Max(1, LayersPerFrame) == 0)
+                        {
+                            frame.LayerFrames++;
+                            yield return null;
+                        }
                     }
                 }
+                else
+                {
+                    // GPU: dispatch the whole network at once; it runs asynchronously on the GPU.
+                    m_worker.Schedule(input);
+                }
 
+                // Request all three readbacks together and wait once (was three sequential waits).
                 var boxesAwaiter = (m_worker.PeekOutput(0) as Tensor<float>).ReadbackAndCloneAsync().GetAwaiter();
-                while (!boxesAwaiter.IsCompleted)
-                {
-                    yield return null;
-                }
-
                 var classesAwaiter = (m_worker.PeekOutput(1) as Tensor<int>).ReadbackAndCloneAsync().GetAwaiter();
-                while (!classesAwaiter.IsCompleted)
-                {
-                    yield return null;
-                }
-
                 var scoresAwaiter = (m_worker.PeekOutput(2) as Tensor<float>).ReadbackAndCloneAsync().GetAwaiter();
-                while (!scoresAwaiter.IsCompleted)
+                while (!boxesAwaiter.IsCompleted || !classesAwaiter.IsCompleted || !scoresAwaiter.IsCompleted)
                 {
+                    frame.LayerFrames++;
                     yield return null;
                 }
 

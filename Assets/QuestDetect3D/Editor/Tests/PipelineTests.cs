@@ -72,8 +72,9 @@ namespace QuestDetect3D.Tests
             }
 
             labels[56] = "chair";
-            labels[60] = "diningtable";
+            labels[60] = "tvmonitor";
             labels[0] = "person";
+            labels[59] = "bed"; // mapped category, but not in YoloDecode.Allowed → must be dropped
             // 4 anchors: two overlapping chairs (NMS → 1), a table overlapping the chair (different group → kept),
             // a person (ignored class).
             var boxes = new float[]
@@ -83,7 +84,7 @@ namespace QuestDetect3D.Tests
                 80, 300, 600, 520,
                 400, 50, 500, 600,
             };
-            var classes = new[] { 56, 56, 60, 0 };
+            var classes = new[] { 56, 56, 60, 59 };
             var scores = new[] { 0.9f, 0.8f, 0.7f, 0.95f };
             var dets = new List<Detection2D>();
             YoloDecode.Decode(boxes, classes, scores, 4, new Vector2Int(640, 640), labels, 0.3f, 0.55f, dets);

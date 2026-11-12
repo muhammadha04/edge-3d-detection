@@ -33,6 +33,16 @@ namespace QuestDetect3D
 
         private static readonly List<int> s_candidates = new List<int>(256);
 
+        /// <summary>Categories the app tracks (chairs and screens only, for speed and focus).</summary>
+        public static readonly HashSet<ObjectCategory> Allowed = new HashSet<ObjectCategory>
+        {
+            ObjectCategory.Chair,
+            ObjectCategory.Screen,
+        };
+
+        private static bool Accept(string label, out ObjectCategory category) =>
+            Categories.TryFromCocoLabel(label, out category) && Allowed.Contains(category);
+
         /// <param name="boxes">N×4 row-major corners in input pixels (top-left origin).</param>
         public static void Decode(
             float[] boxes,
@@ -55,7 +65,7 @@ namespace QuestDetect3D
                 }
 
                 var cls = classIds[i];
-                if (cls < 0 || labels == null || cls >= labels.Count || !Categories.TryFromCocoLabel(labels[cls], out _))
+                if (cls < 0 || labels == null || cls >= labels.Count || !Accept(labels[cls], out _))
                 {
                     continue;
                 }

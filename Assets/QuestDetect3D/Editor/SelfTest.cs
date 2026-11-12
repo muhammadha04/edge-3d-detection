@@ -57,15 +57,8 @@ namespace QuestDetect3D.EditorTools
             sb.AppendLine("--- 1. 3D pipeline on synthetic room ---");
             var pipeline = PipelineTests.RunAll();
             sb.Append(pipeline);
-            sb.AppendLine("--- 2. YOLOv9-t variants (Inference Engine CPU) on photos vs onnxruntime FP32 ---");
+            sb.AppendLine("--- 2. YOLO11n@320 variants (Inference Engine CPU) on photos vs onnxruntime FP32 ---");
             var failed = 0;
-            var meta = AssetDatabase.LoadAssetAtPath<ModelAsset>(SceneBuilder.MetaYoloModelPath);
-            if (meta != null)
-            {
-                var (_, _, metaText) = YoloOnPhotos(ModelLoader.Load(meta), "meta-uint8");
-                sb.Append(metaText);
-            }
-
             foreach (var precision in new[] { YoloModelExport.Precision.Fp32, YoloModelExport.Precision.Uint8, YoloModelExport.Precision.Fp16 })
             {
                 var name = "ours-" + precision.ToString().ToLowerInvariant();
