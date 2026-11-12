@@ -17,6 +17,7 @@ namespace QuestDetect3D.Annotation
         public event Action WhenSelected = delegate { };
         public event Action WhenUnselected = delegate { };
 
+        /// <summary>Turns the trigger state into Interaction SDK select / unselect events.</summary>
         private void Update()
         {
             var down = OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger, Controller);
@@ -36,6 +37,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Releases a held selection when the ray is disabled.</summary>
         private void OnDisable()
         {
             if (m_down)
@@ -63,6 +65,7 @@ namespace QuestDetect3D.Annotation
         /// <summary>True while this ray is over (or pressing) a panel: world input must ignore the trigger then.</summary>
         public bool IsOnPanel => m_interactor != null && m_interactor.isActiveAndEnabled && m_interactor.HasInteractable;
 
+        /// <summary>Builds a RayInteractor under a controller anchor (inactive until SetActive(true)).</summary>
         public static AnnRay Create(Transform controllerAnchor, OVRInput.Controller controller, Material material)
         {
             var go = new GameObject(controller == OVRInput.Controller.RTouch ? "AnnRay Right" : "AnnRay Left");
@@ -92,6 +95,7 @@ namespace QuestDetect3D.Annotation
             return ray;
         }
 
+        /// <summary>Shows or hides this ray (and its visuals).</summary>
         public void SetActive(bool active)
         {
             gameObject.SetActive(active);
@@ -102,6 +106,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Draws the ray line + cursor while it is on a panel.</summary>
         private void LateUpdate()
         {
             var show = IsOnPanel;
@@ -137,6 +142,7 @@ namespace QuestDetect3D.Annotation
             MeshUtil.SetColor(m_cursorRenderer, m_block, color);
         }
 
+        /// <summary>Removes the world-space visuals.</summary>
         private void OnDestroy()
         {
             if (m_line != null)

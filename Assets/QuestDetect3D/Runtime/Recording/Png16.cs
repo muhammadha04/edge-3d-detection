@@ -14,6 +14,7 @@ namespace QuestDetect3D.Recording
         private static readonly byte[] Signature = { 137, 80, 78, 71, 13, 10, 26, 10 };
         private static uint[] s_crcTable;
 
+        /// <summary>uint16 pixels (row 0 first) → PNG bytes (16-bit greyscale, no filter, fast deflate).</summary>
         public static byte[] Encode(ushort[] pixels, int width, int height)
         {
             if (pixels.Length < width * height)
@@ -75,6 +76,7 @@ namespace QuestDetect3D.Recording
             }
         }
 
+        /// <summary>PNG bytes (16-bit greyscale, any filter, not interlaced) → uint16 pixels.</summary>
         public static ushort[] Decode(byte[] png, out int width, out int height)
         {
             width = height = 0;
@@ -180,6 +182,7 @@ namespace QuestDetect3D.Recording
             return pixels;
         }
 
+        /// <summary>PNG Paeth predictor.</summary>
         private static int Paeth(int a, int b, int c)
         {
             var p = a + b - c;
@@ -189,6 +192,7 @@ namespace QuestDetect3D.Recording
             return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
         }
 
+        /// <summary>Length, type, data, CRC.</summary>
         private static void WriteChunk(Stream s, string type, byte[] data)
         {
             var header = new byte[8];
@@ -203,6 +207,7 @@ namespace QuestDetect3D.Recording
             s.Write(tail, 0, 4);
         }
 
+        /// <summary>Big-endian uint32.</summary>
         private static void WriteBe(byte[] b, int o, uint v)
         {
             b[o] = (byte)(v >> 24);
@@ -211,8 +216,10 @@ namespace QuestDetect3D.Recording
             b[o + 3] = (byte)v;
         }
 
+        /// <summary>Big-endian uint32.</summary>
         private static uint ReadBe(byte[] b, int o) => (uint)(b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]);
 
+        /// <summary>zlib checksum of the raw scanlines.</summary>
         private static uint Adler32(byte[] data)
         {
             uint a = 1, b = 0;
@@ -225,6 +232,7 @@ namespace QuestDetect3D.Recording
             return (b << 16) | a;
         }
 
+        /// <summary>PNG chunk CRC.</summary>
         private static uint Crc32(byte[] type, byte[] data)
         {
             if (s_crcTable == null)

@@ -59,6 +59,7 @@ namespace QuestDetect3D.Annotation
             return aligned;
         }
 
+        /// <summary>Robust mean (per-coordinate median after yaw alignment) and gt_sigma of k repetitions. Use k ≥ 3 blind repetitions.</summary>
         public static RobustBox Compute(IReadOnlyList<UprightBox> boxes, float period)
         {
             var result = new RobustBox { N = boxes.Count };
@@ -130,6 +131,7 @@ namespace QuestDetect3D.Annotation
             return result;
         }
 
+        /// <summary>Median of one coordinate over boxes.</summary>
         private static float Median(List<UprightBox> boxes, Func<UprightBox, float> f)
         {
             var values = new List<float>(boxes.Count);
@@ -141,6 +143,7 @@ namespace QuestDetect3D.Annotation
             return MedianOf(values);
         }
 
+        /// <summary>Median of a list (mean of the two middle values for even counts).</summary>
         public static float MedianOf(List<float> values)
         {
             var v = new List<float>(values);

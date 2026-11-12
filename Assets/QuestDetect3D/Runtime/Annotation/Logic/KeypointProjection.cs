@@ -13,6 +13,7 @@ namespace QuestDetect3D.Annotation
     {
         public const int Count = 9;
 
+        /// <summary>The 9 keypoints (centre + 8 corners) of a box, in the box's frame.</summary>
         public static Vector3[] Keypoints3D(UprightBox box)
         {
             var corners = new Vector3[8];

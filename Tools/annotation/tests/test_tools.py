@@ -44,6 +44,7 @@ def synthetic_root() -> Path:
 
 
 def session() -> Session:
+    """The synthetic session."""
     return Session(next((synthetic_root() / "sessions").iterdir()))
 
 

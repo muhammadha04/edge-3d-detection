@@ -20,6 +20,7 @@ using UnityEngine;
 
 public static class ReplayRunner
 {
+    /// <summary>replay &lt;session&gt; [--detections f] [--out f] [--floor room|none]: fits + tracks for every detections line.</summary>
     public static int Main(string[] args)
     {
         if (args.Length < 1)
@@ -197,6 +198,7 @@ public static class ReplayRunner
         return true;
     }
 
+    /// <summary>CameraModel from a detections.jsonl camera object (pose, focal, principal, sensor crop, resolution).</summary>
     private static CameraModel Camera(JToken c)
     {
         var q = c["rotation"];
@@ -209,6 +211,7 @@ public static class ReplayRunner
 
     private static Vector3 V3(JToken a) => new Vector3((float)a[0], (float)a[1], (float)a[2]);
 
+    /// <summary>Recorded frame closest in time (device detections carry their own time, not a recorded frame id).</summary>
     private static JObject Nearest(List<JObject> frames, float t)
     {
         JObject best = null;
@@ -226,6 +229,7 @@ public static class ReplayRunner
         return best;
     }
 
+    /// <summary>All parsable lines of a JSONL file.</summary>
     private static List<JObject> ReadJsonl(string path)
     {
         var list = new List<JObject>();
@@ -254,6 +258,7 @@ public static class ReplayRunner
         return list;
     }
 
+    /// <summary>Value after a command line flag, or the fallback.</summary>
     private static string Arg(string[] args, string name, string fallback)
     {
         var i = Array.IndexOf(args, name);

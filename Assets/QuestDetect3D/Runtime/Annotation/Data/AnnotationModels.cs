@@ -46,6 +46,7 @@ namespace QuestDetect3D.Annotation
         [JsonProperty("schema_version")] public int SchemaVersion = Schema.Version;
         [JsonProperty("objects")] public List<ObjectEntry> Objects = new List<ObjectEntry>();
 
+        /// <summary>Catalog object by id, or null.</summary>
         public ObjectEntry Find(string id)
         {
             foreach (var o in Objects)
@@ -122,6 +123,7 @@ namespace QuestDetect3D.Annotation
         /// Already applied to yaw_deg and size; kept for the audit trail.</summary>
         [JsonProperty("front_quarter")] public int FrontQuarter;
 
+        /// <summary>Box record from an UprightBox (yaw converted to degrees).</summary>
         public static BoxDto From(UprightBox box, int frontQuarter = 0)
         {
             return new BoxDto
@@ -133,6 +135,7 @@ namespace QuestDetect3D.Annotation
             };
         }
 
+        /// <summary>UprightBox from this record (yaw back to radians).</summary>
         public UprightBox ToUpright()
         {
             return new UprightBox(Vec.FromArray(BottomCenter), YawDeg * Mathf.Deg2Rad, Vec.FromArray(Size));
@@ -257,6 +260,7 @@ namespace QuestDetect3D.Annotation
         [JsonProperty("box_convention")] public string BoxConvention = GroundTruth.BoxConvention;
         [JsonProperty("objects")] public List<ObjectAnnotations> Objects = new List<ObjectAnnotations>();
 
+        /// <summary>Annotations of one object, or null.</summary>
         public ObjectAnnotations Find(string objectId)
         {
             foreach (var o in Objects)
@@ -270,6 +274,7 @@ namespace QuestDetect3D.Annotation
             return null;
         }
 
+        /// <summary>Annotations of one object, created empty if missing.</summary>
         public ObjectAnnotations GetOrAdd(string objectId)
         {
             var o = Find(objectId);
@@ -306,8 +311,10 @@ namespace QuestDetect3D.Annotation
 
     public static class Vec
     {
+        /// <summary>Vector3 → [x, y, z].</summary>
         public static float[] ToArray(Vector3 v) => new[] { v.x, v.y, v.z };
 
+        /// <summary>[x, y, z] → Vector3 (zero when missing).</summary>
         public static Vector3 FromArray(float[] a)
         {
             return a != null && a.Length >= 3 ? new Vector3(a[0], a[1], a[2]) : new Vector3(0f, 0f, 0f);

@@ -84,6 +84,7 @@ def box_in_camera(cam: Camera, box: UprightBox) -> dict:
 
 
 def assign_splits(session_ids: List[str], val: List[str], test: List[str], ratios=(0.7, 0.15, 0.15)) -> Dict[str, str]:
+    """train/val/test per SESSION: explicit --val/--test ids, else a stable hash (70/15/15); ≥ 3 sessions → every split non-empty."""
     out = {}
     for sid in session_ids:
         if sid in test:
@@ -106,6 +107,7 @@ def assign_splits(session_ids: List[str], val: List[str], test: List[str], ratio
 
 def export(paths: List[str], out_dir: Path, val: List[str] = (), test: List[str] = (), every: int = 1, copy_images: bool = True,
            min_visible: int = 1) -> dict:
+    """Writes coco/<split>.json, yolo/ (images, labels, dataset.yaml), raw.jsonl and export_summary.json. Returns counts."""
     sessions = [Session(p) for p in find_sessions(paths)]
     if not sessions:
         raise SystemExit("no sessions found")
@@ -207,6 +209,7 @@ def export(paths: List[str], out_dir: Path, val: List[str] = (), test: List[str]
 
 
 def main(argv=None) -> int:
+    """Command line entry point (see the module docstring)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("paths", nargs="+", help="QD3D root(s) or session folders")
     ap.add_argument("--out", required=True)

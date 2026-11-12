@@ -33,6 +33,7 @@ from .geometry import Camera, RoomFrame, UprightBox, depth_to_world
 
 
 def read_jsonl(path: Path) -> List[dict]:
+    """All parsable lines of a JSONL file (a line cut by a crash is skipped)."""
     if not path.exists():
         return []
     out = []
@@ -48,6 +49,7 @@ def read_jsonl(path: Path) -> List[dict]:
 
 
 def read_json(path: Path, default=None):
+    """Parsed JSON file, or default when missing."""
     if not path.exists():
         return default
     with open(path, encoding="utf-8") as f:
@@ -73,24 +75,30 @@ class DataRoot:
     """The QD3D folder (catalog, rooms, annotations, sessions)."""
 
     def __init__(self, root: Path):
+        """Opens the QD3D folder and reads the catalog."""
         self.root = Path(root)
         self.catalog = read_json(self.root / "catalog.json", {"objects": []})
         self.objects = {o["id"]: o for o in self.catalog.get("objects", [])}
 
     def room(self, room_id: str) -> Optional[dict]:
+        """rooms/<id>.json as a dict (None if missing)."""
         return read_json(self.root / "rooms" / f"{room_id}.json")
 
     def annotations(self, room_id: str) -> dict:
+        """annotations/<room>.json as a dict."""
         return read_json(self.root / "annotations" / f"{room_id}.json", {"objects": []})
 
     def rooms(self) -> List[dict]:
+        """Every room file."""
         return [read_json(p) for p in sorted((self.root / "rooms").glob("*.json"))]
 
     def sessions(self) -> List[Path]:
+        """Every recorded session folder (with a session.json)."""
         d = self.root / "sessions"
         return sorted(p for p in d.iterdir() if (p / "session.json").exists()) if d.exists() else []
 
     def accepted_boxes(self, room_id: str, include_redo: bool = False) -> List[GtBox]:
+        """Accepted ground truth of a room (objects marked Redo are excluded unless include_redo)."""
         out = []
         for ann in self.annotations(room_id).get("objects", []):
             acc = ann.get("accepted")
@@ -107,6 +115,7 @@ class DataRoot:
 
 class Session:
     def __init__(self, path, data_root: Optional[Path] = None):
+        """Reads session.json, frames.jsonl, depth.jsonl and the ground truth of the session's room."""
         self.path = Path(path)
         self.info = read_json(self.path / "session.json", {})
         self.frames = read_jsonl(self.path / "frames.jsonl")
@@ -121,20 +130,25 @@ class Session:
 
     @property
     def id(self) -> str:
+        """Session id (folder name)."""
         return self.info.get("session_id", self.path.name)
 
     def frame(self, frame_id: int) -> Optional[dict]:
+        """frames.jsonl record by frame id."""
         return self._frame_by_id.get(frame_id)
 
     def image(self, rec: dict):
+        """Frame JPEG as a BGR array (cv2)."""
         import cv2
         return cv2.imread(str(self.path / rec["file"]), cv2.IMREAD_COLOR)
 
     def image_path(self, rec: dict) -> Path:
+        """Path of the frame JPEG."""
         return self.path / rec["file"]
 
     @staticmethod
     def camera(rec: dict) -> Camera:
+        """Camera model of a frame record."""
         return Camera.from_frame(rec)
 
     def room_frame(self, rec: Optional[dict] = None) -> Optional[RoomFrame]:
@@ -144,6 +158,7 @@ class Session:
         return self._start_frame
 
     def gt_boxes(self, rec: Optional[dict] = None) -> List[GtBox]:
+        """Ground-truth boxes with box_world for this frame (room frame of the frame, else of the session start)."""
         frame = self.room_frame(rec)
         out = []
         for g in self._gt:
@@ -162,6 +177,7 @@ class Session:
         return img, rec
 
     def depth_points(self, rec_or_id, stride: int = 2) -> np.ndarray:
+        """World points of the depth map recorded with a frame (stride = pixel step)."""
         fid = rec_or_id["frame_id"] if isinstance(rec_or_id, dict) else rec_or_id
         d, r = self.depth(fid)
         if d is None:
@@ -171,13 +187,16 @@ class Session:
     # ------------------------------------------------------------ other streams
 
     def detections(self, name: str = "detections.jsonl") -> List[dict]:
+        """A detections-style JSONL inside the session (or a path)."""
         p = Path(name)
         return read_jsonl(p if p.is_absolute() or p.exists() else self.path / name)
 
     def events(self) -> List[dict]:
+        """The session's audit trail."""
         return read_jsonl(self.path / "events.jsonl")
 
     def poses(self) -> Dict[str, np.ndarray]:
+        """poses.csv as {column: array}."""
         path = self.path / "poses.csv"
         if not path.exists():
             return {}
@@ -188,11 +207,13 @@ class Session:
         return {h: arr[:, i] for i, h in enumerate(header)}
 
     def nearest_frame(self, t_realtime: float) -> Optional[dict]:
+        """Recorded frame closest in time (t_realtime)."""
         if not self.frames:
             return None
         return min(self.frames, key=lambda r: abs(r["t_realtime"] - t_realtime))
 
     def summary(self) -> str:
+        """Multi-line human summary of the session."""
         counts = self.info.get("counts", {})
         frame = self._start_frame
         lines = [
@@ -222,8 +243,10 @@ def find_sessions(paths: List[str]) -> List[Path]:
 
 
 def distance(a: np.ndarray, b: np.ndarray) -> float:
+    """Euclidean distance."""
     return float(np.linalg.norm(np.asarray(a) - np.asarray(b)))
 
 
 def angle_deg(rad: float) -> float:
+    """Radians → degrees."""
     return rad * 180.0 / math.pi

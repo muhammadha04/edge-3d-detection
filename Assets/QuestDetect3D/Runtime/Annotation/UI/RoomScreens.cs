@@ -17,6 +17,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Rooms";
 
+        /// <summary>Paged room list, New room, Current room.</summary>
         public void Build(AnnPanel p)
         {
             var rooms = m_mode.Store.ListRooms();
@@ -71,6 +72,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Room: " + (m_mode.CurrentRoom != null ? m_mode.CurrentRoom.Name : "none");
 
+        /// <summary>Frame status, anchor, drift summary, Place/Re-place cross, Retry, Drift check, Re-touch, Test box, Rename.</summary>
         public void Build(AnnPanel p)
         {
             var room = m_mode.CurrentRoom;
@@ -119,6 +121,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Live frame status; rebuilds the panel when the anchor state changes.</summary>
         public void Tick()
         {
             if (m_status != null)
@@ -138,6 +141,7 @@ namespace QuestDetect3D.Annotation
         private Color StatusColor() => m_mode.Room.State == RoomFrameState.Localized ? new Color(0.45f, 0.95f, 0.55f) :
             m_mode.Room.State == RoomFrameState.Failed ? new Color(1f, 0.4f, 0.4f) : AnnPanel.Warning;
 
+        /// <summary>Last 4 drift / room-cross checks for display.</summary>
         public static string DriftSummary(RoomFile room)
         {
             if (room.DriftChecks.Count == 0)
@@ -176,6 +180,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Place room cross";
 
+        /// <summary>Step prompt (centre → arm → save), error, Save / Restart / Cancel.</summary>
         public void Build(AnnPanel p)
         {
             if (m_saving)
@@ -208,6 +213,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>Tip + plumb line; trigger records the centre, then the arm point (frame preview).</summary>
         public void Tick()
         {
             TouchAids.DrawTips(m_mode, true);
@@ -250,6 +256,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>Creates and saves the anchor, stores it in the room file with the anchor history.</summary>
         private void Save()
         {
             var room = m_mode.CurrentRoom;
@@ -328,6 +335,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => m_kind == "room_cross" ? "Re-touch room cross" : "Drift check";
 
+        /// <summary>Instructions, when-selector, result, Done (and reset of the drift reference).</summary>
         public void Build(AnnPanel p)
         {
             var room = m_mode.CurrentRoom;
@@ -372,6 +380,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>Trigger records the tip in the room frame and the distance to the reference.</summary>
         public void Tick()
         {
             TouchAids.DrawTips(m_mode, true);
@@ -438,6 +447,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Test box";
 
+        /// <summary>Instructions and Done.</summary>
         public void Build(AnnPanel p)
         {
             p.Label("Hold the tip above a spot on the floor (e.g. a tape mark) and press the trigger: a 20 cm box is stored there in the room frame. " +
@@ -445,6 +455,7 @@ namespace QuestDetect3D.Annotation
             p.Button("Done", () => m_mode.Show(new RoomDetailScreen(m_mode)));
         }
 
+        /// <summary>Trigger stores a 20 cm box on the floor under the tip.</summary>
         public void Tick()
         {
             TouchAids.DrawTips(m_mode, true);

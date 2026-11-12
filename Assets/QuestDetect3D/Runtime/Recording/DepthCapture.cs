@@ -53,6 +53,7 @@ namespace QuestDetect3D.Recording
         public bool IsAvailable => m_shader != null && SystemInfo.supportsComputeShaders &&
                                    Shader.GetGlobalTexture(DepthTextureId) is RenderTexture rt && rt != null && rt.IsCreated();
 
+        /// <summary>Copies the current left-eye depth to a buffer and reads it back asynchronously; onReady gets metres + matrices.</summary>
         public bool TryCapture(Action<DepthFrame> onReady)
         {
             if (m_pending || m_shader == null)
@@ -133,6 +134,7 @@ namespace QuestDetect3D.Recording
             return mm;
         }
 
+        /// <summary>Releases the GPU buffer.</summary>
         public void Dispose()
         {
             m_buffer?.Dispose();

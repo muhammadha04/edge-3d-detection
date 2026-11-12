@@ -32,6 +32,7 @@ FLIP_IDX = [0, 2, 1, 4, 3, 6, 5, 8, 7]
 
 
 def wrap_pi(a: float) -> float:
+    """Angle (radians) wrapped to [−π, π)."""
     return a - 2.0 * math.pi * math.floor((a + math.pi) / (2.0 * math.pi))
 
 
@@ -61,22 +62,27 @@ class UprightBox:
 
     @staticmethod
     def from_dict(d: dict) -> "UprightBox":
+        """Box from a JSON record {bottom_center, yaw_deg, size}."""
         return UprightBox(np.asarray(d["bottom_center"], float), math.radians(float(d["yaw_deg"])), np.asarray(d["size"], float))
 
     def to_dict(self) -> dict:
+        """JSON record {bottom_center, yaw_deg, size}."""
         return {"bottom_center": [float(v) for v in self.bottom_center], "yaw_deg": math.degrees(self.yaw),
                 "size": [float(v) for v in self.size]}
 
     @property
     def forward(self) -> np.ndarray:
+        """Unit vector of the object front (local +Z)."""
         return np.array([math.sin(self.yaw), 0.0, math.cos(self.yaw)])
 
     @property
     def right(self) -> np.ndarray:
+        """Unit vector of local +X."""
         return np.array([math.cos(self.yaw), 0.0, -math.sin(self.yaw)])
 
     @property
     def center(self) -> np.ndarray:
+        """Box centre (bottom centre + half height)."""
         return self.bottom_center + np.array([0.0, self.size[1] * 0.5, 0.0])
 
     def corners(self) -> np.ndarray:
@@ -107,24 +113,30 @@ class RoomFrame:
 
     @staticmethod
     def from_dict(d: Optional[dict]) -> Optional["RoomFrame"]:
+        """Room frame from {origin, yaw_deg} (None for an empty record)."""
         if not d:
             return None
         return RoomFrame(np.asarray(d["origin"], float), math.radians(float(d["yaw_deg"])))
 
     @property
     def rotation(self) -> np.ndarray:
+        """Room → world rotation matrix."""
         return yaw_matrix(self.yaw)
 
     def room_to_world(self, p: np.ndarray) -> np.ndarray:
+        """Room-frame points (N×3 or 3) → world."""
         return (self.rotation @ np.asarray(p, float).T).T + self.origin
 
     def world_to_room(self, p: np.ndarray) -> np.ndarray:
+        """World points → room frame."""
         return (self.rotation.T @ (np.asarray(p, float) - self.origin).T).T
 
     def box_to_world(self, b: UprightBox) -> UprightBox:
+        """Room-frame box → world box."""
         return UprightBox(self.room_to_world(b.bottom_center), wrap_pi(b.yaw + self.yaw), b.size.copy())
 
     def box_to_room(self, b: UprightBox) -> UprightBox:
+        """World box → room-frame box."""
         return UprightBox(self.world_to_room(b.bottom_center), wrap_pi(b.yaw - self.yaw), b.size.copy())
 
 
@@ -139,6 +151,7 @@ class Camera:
     _r: np.ndarray = field(default=None, repr=False)
 
     def __post_init__(self):
+        """Caches the rotation matrix."""
         self._r = quat_to_matrix(self.rotation)
 
     @staticmethod
@@ -171,13 +184,16 @@ class Camera:
         return self._r
 
     def world_to_local(self, p: np.ndarray) -> np.ndarray:
+        """World points → camera local (+x right, +y up, +z forward)."""
         return (self._r.T @ (np.atleast_2d(p) - self.position).T).T
 
     def world_to_opencv(self, p: np.ndarray) -> np.ndarray:
+        """World points → OpenCV camera frame (x right, y down, z forward)."""
         local = self.world_to_local(p)
         return local * np.array([1.0, -1.0, 1.0])
 
     def local_to_viewport(self, local: np.ndarray):
+        """Camera-local points → viewport (bottom-left origin) and a 'in front of the camera' mask."""
         local = np.atleast_2d(local)
         z = local[:, 2]
         valid = z >= 0.02
@@ -188,18 +204,22 @@ class Camera:
         return vp, valid
 
     def world_to_viewport(self, p: np.ndarray):
+        """World points → viewport and validity mask."""
         return self.local_to_viewport(self.world_to_local(p))
 
     def viewport_to_pixel(self, vp: np.ndarray) -> np.ndarray:
+        """Viewport → JPEG pixels (top-left origin)."""
         W, H = self.resolution
         vp = np.atleast_2d(vp)
         return np.stack([vp[:, 0] * W, (1.0 - vp[:, 1]) * H], axis=1)
 
     def world_to_pixel(self, p: np.ndarray):
+        """World points → JPEG pixels and validity mask (the same projection as the app)."""
         vp, valid = self.world_to_viewport(p)
         return self.viewport_to_pixel(vp), valid
 
     def viewport_to_ray(self, vp: Sequence[float]):
+        """Viewport point → world ray (origin, unit direction), like CameraModel.ViewportToRay."""
         d = np.array([(self.crop[0] + self.crop[2] * vp[0] - self.principal[0]) / self.focal[0],
                       (self.crop[1] + self.crop[3] * vp[1] - self.principal[1]) / self.focal[1], 1.0])
         d = self._r @ d
@@ -209,6 +229,7 @@ class Camera:
 # ---------------------------------------------------------------- 3D IoU, errors
 
 def _polygon_area(poly: np.ndarray) -> float:
+    """Area of a simple polygon (shoelace)."""
     if len(poly) < 3:
         return 0.0
     x, y = poly[:, 0], poly[:, 1]
@@ -216,6 +237,7 @@ def _polygon_area(poly: np.ndarray) -> float:
 
 
 def _ensure_ccw(poly: np.ndarray) -> np.ndarray:
+    """Same polygon, counter-clockwise."""
     x, y = poly[:, 0], poly[:, 1]
     signed = 0.5 * float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
     return poly if signed >= 0 else poly[::-1]
@@ -231,9 +253,11 @@ def _clip(subject: np.ndarray, clip: np.ndarray) -> np.ndarray:
             break
 
         def inside(p):
+            """True when p is left of (inside) the clip edge a→b."""
             return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) >= -1e-12
 
         def intersect(p, q):
+            """Intersection of segment p→q with the clip edge line."""
             d1 = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
             d2 = (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0])
             t = d1 / (d1 - d2)
@@ -252,6 +276,7 @@ def _clip(subject: np.ndarray, clip: np.ndarray) -> np.ndarray:
 
 
 def iou_3d(a: UprightBox, b: UprightBox) -> float:
+    """3D IoU of two upright boxes (rotated footprint polygon intersection × vertical overlap)."""
     pa, pb = _ensure_ccw(a.footprint()), _ensure_ccw(b.footprint())
     inter_area = _polygon_area(_clip(pa, pb))
     ya0, ya1 = a.bottom_center[1], a.bottom_center[1] + a.size[1]
@@ -265,6 +290,7 @@ def iou_3d(a: UprightBox, b: UprightBox) -> float:
 
 
 def symmetry_period(symmetry: Optional[str]) -> float:
+    """Yaw period of a catalog symmetry: none 2π, '2' π, '4' π/2."""
     return {"2": math.pi, "4": math.pi / 2}.get(str(symmetry), 2 * math.pi)
 
 
@@ -329,6 +355,7 @@ def clip_segment_near(a: np.ndarray, b: np.ndarray, near: float = 0.03):
 
 
 def iter_pairs(items: Iterable):
+    """All unordered pairs of a sequence."""
     items = list(items)
     for i in range(len(items)):
         for j in range(i + 1, len(items)):

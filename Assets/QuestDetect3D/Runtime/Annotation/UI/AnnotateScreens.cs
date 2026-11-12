@@ -33,8 +33,10 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Annotate";
 
+        /// <summary>Display name of a method id (M1 / M2 / M4).</summary>
         public static string MethodName(string m) => m == "M1" ? "M1 Touch" : m == "M2" ? "M2 Point" : "M4 Assisted";
 
+        /// <summary>Object list with counts per method, method buttons, blind toggle, Start.</summary>
         public void Build(AnnPanel p)
         {
             var objects = m_mode.Catalog.Objects;
@@ -91,6 +93,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>Accepted repetitions of one method for an object.</summary>
         public static int Count(ObjectAnnotations ann, string method)
         {
             var n = 0;
@@ -211,6 +214,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => $"{m_obj.Name} · {AnnotateSetupScreen.MethodName(m_method)} · rep {NextIndex()}{(m_blind ? " · blind" : "")}";
 
+        /// <summary>Repetition number this task will get.</summary>
         private int NextIndex()
         {
             var ann = m_mode.Annotations?.Find(m_obj.Id);
@@ -219,6 +223,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ panel
 
+        /// <summary>Panel for the current step (touch, assist pick, editor, rating, summary).</summary>
         public void Build(AnnPanel p)
         {
             if (!m_mode.Room.HasFrame && m_step != Step.Summary)
@@ -251,6 +256,7 @@ namespace QuestDetect3D.Annotation
 
         private string Verb => IsPoint ? "Point the ray at" : "Touch with the tip";
 
+        /// <summary>Touch / point prompts, side buttons (✓ = has a point), HUD, Edit / Cancel.</summary>
         private void BuildTouch(AnnPanel p)
         {
             string prompt;
@@ -308,6 +314,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>M4: instructions and the 'most confident' shortcut.</summary>
         private void BuildAssist(AnnPanel p)
         {
             var n = m_mode.LatestTracks.Count;
@@ -321,6 +328,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>Editor modes, floor snap, front +90°, undo, reset, HUD, confirm / discard.</summary>
         private void BuildEdit(AnnPanel p)
         {
             p.Label("Walk around. RED dots = object outside the box → point at that face, hold GRIP and pull it out. " +
@@ -368,6 +376,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>Self-rating 1–5 (stored with the repetition).</summary>
         private void BuildRate(AnnPanel p)
         {
             p.Label("How sure are you that this box is right?  1 = unsure … 5 = sure", 28);
@@ -386,6 +395,7 @@ namespace QuestDetect3D.Annotation
             });
         }
 
+        /// <summary>k/3 counter, spread of this method, mean box vs tape, Repeat / Done.</summary>
         private void BuildSummary(AnnPanel p)
         {
             var ann = m_mode.Annotations.Find(m_obj.Id);
@@ -417,6 +427,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ per frame
 
+        /// <summary>Per frame: input for the current step, drawing (previous boxes unless blind, touches, box, walls, front arrow), live checks, HUD.</summary>
         public void Tick()
         {
             var frameOk = m_mode.Room.HasFrame;
@@ -470,6 +481,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>M2: ray + reticle where each controller's ray hits depth or the floor.</summary>
         private void DrawPointerHits(float floorWorld)
         {
             foreach (var c in new[] { OVRInput.Controller.LTouch, OVRInput.Controller.RTouch })
@@ -514,6 +526,7 @@ namespace QuestDetect3D.Annotation
             return false;
         }
 
+        /// <summary>World trigger → touch (M1 tip / M2 ray hit) for the current step; front points set the yaw; extremes extend the box.</summary>
         private void HandleTouchInput(RoomFrame frame, float floorWorld)
         {
             if (!m_mode.WorldTriggerDown(out var c))
@@ -608,6 +621,7 @@ namespace QuestDetect3D.Annotation
             ["error"] = error,
         };
 
+        /// <summary>Next extreme side without a point (auto-advance).</summary>
         private int NextUnsetSide(int from, string justSet = null)
         {
             for (var k = 1; k <= SideNames.Length; k++)
@@ -622,6 +636,7 @@ namespace QuestDetect3D.Annotation
             return justSet != null ? from : 0;
         }
 
+        /// <summary>Marks earlier touches of a side as replaced (kept for the audit trail).</summary>
         private void Supersede(string label)
         {
             foreach (var t in m_touches)
@@ -633,6 +648,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Active touches of one side.</summary>
         private int CountSide(string label)
         {
             var n = 0;
@@ -647,6 +663,7 @@ namespace QuestDetect3D.Annotation
             return n;
         }
 
+        /// <summary>True when front, back, left, right and top all have a point.</summary>
         private bool AllSidesSet()
         {
             foreach (var s in SideNames)
@@ -660,6 +677,7 @@ namespace QuestDetect3D.Annotation
             return true;
         }
 
+        /// <summary>Box from all active touches (TouchBox.FromPoints), front side resolved with the back point.</summary>
         private void Recompute()
         {
             if (!m_hasYaw)
@@ -693,6 +711,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ M4 assisted
 
+        /// <summary>Highest-confidence detector track (M4 shortcut).</summary>
         private TrackedObject BestTrack()
         {
             TrackedObject best = null;
@@ -707,6 +726,7 @@ namespace QuestDetect3D.Annotation
             return best;
         }
 
+        /// <summary>M4: draws the detector boxes, highlights the one the right ray points at, trigger picks it.</summary>
         private void TickAssist()
         {
             var fresh = Time.realtimeSinceStartup - m_mode.LatestTracksTime < 2f;
@@ -742,6 +762,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>M4: takes a detector box (world → room frame) as the starting box and opens the editor.</summary>
         private void PickTrack(TrackedObject track)
         {
             if (track == null || !m_mode.Room.HasFrame)
@@ -775,6 +796,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ editor
 
+        /// <summary>Switches to the editor step and resets the live check points.</summary>
         private void EnterEdit()
         {
             m_step = Step.Edit;
@@ -783,6 +805,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>What the right thumbstick does in the current edit mode.</summary>
         private string EditHelp()
         {
             switch (m_editMode)
@@ -794,6 +817,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Editor input: grip on a face = push/pull, right stick = move/rotate/size (grip = fine), left stick = height.</summary>
         private void HandleEditInput(RoomFrame frame)
         {
             const OVRInput.Controller right = OVRInput.Controller.RTouch;
@@ -879,6 +903,7 @@ namespace QuestDetect3D.Annotation
             m_heldHeight = hdir;
         }
 
+        /// <summary>Thumbstick → one of the 4 directions (or none below 0.6).</summary>
         private static Vector2Int Quantize(Vector2 v)
         {
             if (v.magnitude < StickThreshold)
@@ -889,6 +914,7 @@ namespace QuestDetect3D.Annotation
             return Mathf.Abs(v.x) > Mathf.Abs(v.y) ? new Vector2Int(v.x > 0f ? 1 : -1, 0) : new Vector2Int(0, v.y > 0f ? 1 : -1);
         }
 
+        /// <summary>Replaces the box (undo-able) and records the edit.</summary>
         private void Apply(UprightBox next, string op, float[] value)
         {
             m_undo.Add(m_box);
@@ -903,6 +929,7 @@ namespace QuestDetect3D.Annotation
             Record(op, value);
         }
 
+        /// <summary>Adds an edit to raw_inputs and to the audit trail.</summary>
         private void Record(string op, float[] value)
         {
             m_edits.Add(new EditOp { Op = op, Value = value, T = Time.realtimeSinceStartup - m_start });
@@ -915,6 +942,7 @@ namespace QuestDetect3D.Annotation
             });
         }
 
+        /// <summary>Restores the previous box (and front quarter).</summary>
         private void Undo()
         {
             if (m_undo.Count == 0)
@@ -932,6 +960,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ save
 
+        /// <summary>Stores the confirmed repetition with all raw inputs, recomputes the accepted box, saves and audits.</summary>
         private void Save(int rating)
         {
             if (!m_mode.Room.HasFrame)
@@ -997,6 +1026,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>Discards this repetition (audited) and returns to the setup screen.</summary>
         private void Cancel()
         {
             m_mode.Audit("annotation_discarded", new JObject
@@ -1012,6 +1042,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ drawing + HUD
 
+        /// <summary>Non-blind: earlier repetitions of this object in grey.</summary>
         private void DrawPrevious(RoomFrame frame)
         {
             if (m_blind || m_step == Step.Summary)
@@ -1034,6 +1065,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Touched points (yellow = front reference, cyan = extremes) and the front edge.</summary>
         private void DrawTouches(RoomFrame frame)
         {
             foreach (var t in m_touches)
@@ -1054,6 +1086,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Live box size, Δ vs tape, depth points outside/inside, editor state.</summary>
         private string HudText()
         {
             if (!m_hasBox)
@@ -1073,6 +1106,7 @@ namespace QuestDetect3D.Annotation
             return s;
         }
 
+        /// <summary>Box size minus tape dims (W/D/H, cm).</summary>
         private string TapeDelta(UprightBox b)
         {
             var t = m_obj.TapeDimsCm;
@@ -1084,6 +1118,7 @@ namespace QuestDetect3D.Annotation
             return $"| tape {t.W:0.#}×{t.D:0.#}×{t.H:0.#} | Δ {b.Size.x * 100f - t.W:+0.0;-0.0} / {b.Size.z * 100f - t.D:+0.0;-0.0} / {b.Size.y * 100f - t.H:+0.0;-0.0} cm";
         }
 
+        /// <summary>Stops the detector request of M4.</summary>
         public void OnLeave()
         {
             m_mode.AssistedWantsDetector = false;

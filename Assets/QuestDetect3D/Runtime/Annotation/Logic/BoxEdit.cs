@@ -64,6 +64,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Centre point of a face (for drawing and hit tests).</summary>
         public static Vector3 FaceCenter(UprightBox b, int face)
         {
             var c = b.Center;
@@ -78,6 +79,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Translate the box (metres, same frame as the box).</summary>
         public static UprightBox Move(UprightBox b, Vector3 delta)
         {
             b.BottomCenter += delta;
@@ -128,6 +130,7 @@ namespace QuestDetect3D.Annotation
             return new Vector3(Vector3.Dot(d, b.Right), d.y, Vector3.Dot(d, b.Forward));
         }
 
+        /// <summary>True when the point is inside the box enlarged by margin (metres).</summary>
         public static bool Contains(UprightBox b, Vector3 p, float margin = 0f)
         {
             var l = ToLocal(b, p);

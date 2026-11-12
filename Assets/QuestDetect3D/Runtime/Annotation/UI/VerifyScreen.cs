@@ -22,6 +22,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Verify ground truth";
 
+        /// <summary>Per object: accepted method, n, σ, verdict, OK / Redo; show repetitions toggle.</summary>
         public void Build(AnnPanel p)
         {
             var objects = m_mode.Catalog.Objects;
@@ -65,6 +66,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>Stores ok / redo (Redo excludes the object from evaluation until re-annotated) with the head position.</summary>
         private void Mark(ObjectEntry o, ObjectAnnotations ann, string verdict)
         {
             ann.Verify = verdict;
@@ -84,6 +86,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>Draws all accepted boxes (colour per object, thickness grows with σ) and labels.</summary>
         public void Tick()
         {
             if (!m_mode.Room.HasFrame || m_mode.Annotations == null)

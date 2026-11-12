@@ -26,6 +26,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Calibrate controller tip";
 
+        /// <summary>Controller choice, instructions, live counter, result, Start / Save / Reset to default.</summary>
         public void Build(AnnPanel p)
         {
             var name = AnnRig.Name(m_controller);
@@ -59,6 +60,7 @@ namespace QuestDetect3D.Annotation
             p.Button("Back", () => m_mode.Show(new HomeScreen(m_mode)), !m_collecting);
         }
 
+        /// <summary>Chooses the controller to calibrate.</summary>
         private void Select(OVRInput.Controller c)
         {
             m_controller = c;
@@ -66,6 +68,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>Waits for the trigger on the chosen controller (its UI ray is switched off).</summary>
         private void Arm()
         {
             m_armed = true;
@@ -77,6 +80,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>While the trigger is held: collects controller poses (max 8 s); on release solves.</summary>
         public void Tick()
         {
             TouchAids.DrawTips(m_mode, false);
@@ -117,6 +121,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Subsamples to ~120 poses, solves the pivot, audits the run.</summary>
         private void Finish()
         {
             m_collecting = false;
@@ -149,6 +154,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>Stores the solved tip offset with its residual.</summary>
         private void Save()
         {
             var r = m_result.Value;
@@ -163,6 +169,7 @@ namespace QuestDetect3D.Annotation
             });
         }
 
+        /// <summary>Stores the shipped default offset again.</summary>
         private void ResetDefault()
         {
             Store(new TipCalibration
@@ -176,6 +183,7 @@ namespace QuestDetect3D.Annotation
             });
         }
 
+        /// <summary>Replaces this controller's entry in calibration.json and applies it.</summary>
         private void Store(TipCalibration tip)
         {
             var tips = m_mode.Calibration.Tips;
@@ -194,6 +202,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>Progress line while collecting.</summary>
         private string LiveText()
         {
             if (m_collecting)
@@ -204,6 +213,7 @@ namespace QuestDetect3D.Annotation
             return m_armed ? "Tip on the dot, then HOLD the trigger and rotate." : "";
         }
 
+        /// <summary>Re-enables both UI rays.</summary>
         public void OnLeave()
         {
             m_mode.SetRayEnabled(OVRInput.Controller.LTouch, true);

@@ -23,6 +23,7 @@ namespace QuestDetect3D.Annotation
         public int InsideCount { get; private set; }
         public float MaxOutsideCm { get; private set; }
 
+        /// <summary>Forgets all depth points (when the box is replaced).</summary>
         public void Clear()
         {
             m_points.Clear();

@@ -18,7 +18,9 @@ namespace QuestDetect3D.Recording
     {
         public static JArray V3(Vector3 v) => new JArray(R(v.x), R(v.y), R(v.z));
         public static JArray Q(Quaternion q) => new JArray(R6(q.x), R6(q.y), R6(q.z), R6(q.w));
+        /// <summary>Round to 0.01 mm.</summary>
         private static double R(float f) => System.Math.Round(f, 5);
+        /// <summary>Round quaternion components.</summary>
         private static double R6(float f) => System.Math.Round(f, 7);
 
         public static JObject Pose(Vector3 p, Quaternion q) => new JObject { ["position"] = V3(p), ["rotation"] = Q(q) };

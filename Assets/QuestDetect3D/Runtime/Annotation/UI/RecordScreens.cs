@@ -21,6 +21,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Record";
 
+        /// <summary>Rate 2/5/10 Hz, depth, detector, lighting, live status, Start/Stop, Drift check.</summary>
         public void Build(AnnPanel p)
         {
             var rec = m_mode.Recorder;
@@ -89,6 +90,7 @@ namespace QuestDetect3D.Annotation
             p.Label("Do a drift check before Start and after Stop. Walk slowly around the object at 0.7–3 m.", 22, AnnPanel.DimText);
         }
 
+        /// <summary>Starts a session with the chosen settings (detector tracks reset when the detector is on).</summary>
         private void Start()
         {
             m_error = null;
@@ -116,6 +118,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>Updates the live status line (MB, frames, dropped, free space).</summary>
         public void Tick()
         {
             if (m_status != null)
@@ -129,6 +132,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Status while recording / finishing / idle.</summary>
         private string StatusText()
         {
             var rec = m_mode.Recorder;
@@ -161,6 +165,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Export";
 
+        /// <summary>Data folder, counts, Export zip.</summary>
         public void Build(AnnPanel p)
         {
             var root = m_mode.Store.Root;
@@ -185,6 +190,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Zips the whole QD3D folder (except exports/) on a worker thread into exports/qd3d_&lt;time&gt;.zip.</summary>
         private void Zip()
         {
             m_busy = true;

@@ -25,6 +25,7 @@ namespace QuestDetect3D.Annotation
 
         public bool IsOpen => m_keyboard != null;
 
+        /// <summary>Opens the Quest system keyboard (or the panel keyboard) and calls done with the trimmed text when confirmed.</summary>
         public void Open(string title, string initial, bool numeric, Action<string> done)
         {
             m_title = title;
@@ -57,6 +58,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Per frame: watches the system keyboard (Done / Cancel / never appeared → panel keyboard).</summary>
         public void Update()
         {
             if (m_keyboard == null)
@@ -94,6 +96,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Closes the system keyboard and shows the panel keyboard instead.</summary>
         private void Fallback()
         {
             Log.Warn("ann_keyboard_system_not_visible: using the panel keyboard");
@@ -110,6 +113,7 @@ namespace QuestDetect3D.Annotation
             OpenPanelKeyboard();
         }
 
+        /// <summary>Shows the on-panel keyboard; returns to the calling screen afterwards.</summary>
         private void OpenPanelKeyboard()
         {
             m_mode.Show(new PanelKeyboardScreen(m_mode, m_title, m_initial, m_numeric, text =>
@@ -122,6 +126,7 @@ namespace QuestDetect3D.Annotation
             }));
         }
 
+        /// <summary>Hands the text to the caller and refreshes the panel.</summary>
         private void Finish(string text)
         {
             text = (text ?? "").Trim();
@@ -158,6 +163,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => m_title;
 
+        /// <summary>Keyboard rows (letters or digits), Delete / Clear / Space, OK and Cancel.</summary>
         public void Build(AnnPanel p)
         {
             m_display = p.Label(Display(), 34, AnnPanel.Accent);
@@ -206,6 +212,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>Appends a character (max 80).</summary>
         private void Type(string s)
         {
             if (m_text.Length < 80)
@@ -216,6 +223,7 @@ namespace QuestDetect3D.Annotation
             UpdateDisplay();
         }
 
+        /// <summary>Updates the text line without rebuilding the panel.</summary>
         private void UpdateDisplay()
         {
             if (m_display != null)
@@ -224,6 +232,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Text shown above the keys (with a cursor).</summary>
         private string Display() => m_text.Length == 0 ? "<color=#8A96A3>(empty)</color>" : m_text + "_";
     }
 }

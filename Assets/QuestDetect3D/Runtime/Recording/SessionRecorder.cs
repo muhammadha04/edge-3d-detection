@@ -81,6 +81,7 @@ namespace QuestDetect3D.Recording
         public string LastSessionDir { get; private set; }
         public string LastSummary { get; private set; } = "";
 
+        /// <summary>Creates sessions/&lt;id&gt;/, writes session.json and starts capturing at the chosen rate. Record 2-min walk-arounds at 0.7–3 m.</summary>
         public bool Start(RecordSettings settings, out string error)
         {
             error = null;
@@ -132,6 +133,7 @@ namespace QuestDetect3D.Recording
             return true;
         }
 
+        /// <summary>Stops capturing; the worker finishes the queued frames in the background, then session.json gets counts and duration.</summary>
         public void Stop()
         {
             if (!IsRecording)
@@ -224,6 +226,7 @@ namespace QuestDetect3D.Recording
             }
         }
 
+        /// <summary>Requests one PCA frame (+ depth) and queues JPEG encoding and the frames.jsonl line.</summary>
         private void CaptureFrame()
         {
             var ctx = m_mode.Context;
@@ -331,6 +334,7 @@ namespace QuestDetect3D.Recording
             }
         }
 
+        /// <summary>Callback for a depth readback: queues PNG encoding and the depth.jsonl line.</summary>
         private Action<DepthFrame> OnDepth(int id)
         {
             return frame =>
@@ -378,6 +382,7 @@ namespace QuestDetect3D.Recording
 
         // ------------------------------------------------------------------ detector, events
 
+        /// <summary>Appends one detector frame (2D detections, fits, tracks) to detections.jsonl.</summary>
         public void OnDetectorFrame(YoloFrame frame, IReadOnlyList<DetectorFit> fits, IReadOnlyList<TrackedObject> tracks)
         {
             if (!IsRecording || m_settings == null || !m_settings.Detector)
@@ -393,6 +398,7 @@ namespace QuestDetect3D.Recording
             m_worker.AppendLine(Path.Combine(Dir, "detections.jsonl"), json.ToString(Formatting.None));
         }
 
+        /// <summary>Appends an audit line to the session's events.jsonl.</summary>
         public void LogEvent(JObject line)
         {
             if (IsRecording && m_worker != null)
@@ -403,6 +409,7 @@ namespace QuestDetect3D.Recording
 
         // ------------------------------------------------------------------ helpers
 
+        /// <summary>Adds head + both controllers for this rendered frame to poses.csv (buffered).</summary>
         private void AppendPoseRow(float now)
         {
             var head = m_mode.Rig.Head;
@@ -422,6 +429,7 @@ namespace QuestDetect3D.Recording
             m_poseRowsTotal++;
         }
 
+        /// <summary>Position and quaternion as CSV.</summary>
         private void AppendPose(Vector3 p, Quaternion q)
         {
             var inv = CultureInfo.InvariantCulture;
@@ -431,6 +439,7 @@ namespace QuestDetect3D.Recording
                 .Append(q.w.ToString("F6", inv));
         }
 
+        /// <summary>Hands the buffered pose rows to the worker (every 0.5 s).</summary>
         private void FlushPoses()
         {
             if (m_poseRows.Length == 0 || m_worker == null)
@@ -443,6 +452,7 @@ namespace QuestDetect3D.Recording
             m_worker.AppendLine(Path.Combine(Dir, "poses.csv"), text);
         }
 
+        /// <summary>Reuses a frame-sized byte buffer (avoids 5 MB allocations per frame).</summary>
         private byte[] Rent(int length)
         {
             while (m_pool.TryTake(out var b))
@@ -456,6 +466,7 @@ namespace QuestDetect3D.Recording
             return new byte[length];
         }
 
+        /// <summary>Gives a buffer back to the pool.</summary>
         private void Return(byte[] b)
         {
             if (m_pool.Count < 8)
@@ -464,6 +475,7 @@ namespace QuestDetect3D.Recording
             }
         }
 
+        /// <summary>Updates free space (warning below 2 GB).</summary>
         private void CheckDisk()
         {
             FreeGb = DiskSpace.FreeGb(m_mode.Store.Root);
@@ -473,6 +485,7 @@ namespace QuestDetect3D.Recording
             }
         }
 
+        /// <summary>Everything needed to interpret the session later: versions, device, room, settings, definitions, conventions.</summary>
         private JObject BuildSessionJson()
         {
             var ctx = m_mode.Context;
@@ -539,6 +552,7 @@ namespace QuestDetect3D.Recording
 
     public static class DiskSpace
     {
+        /// <summary>Free space of the data partition in GB (Android StatFs; −1 if unknown).</summary>
         public static double FreeGb(string path)
         {
             try
@@ -559,6 +573,7 @@ namespace QuestDetect3D.Recording
             }
         }
 
+        /// <summary>Horizon OS build string (android.os.Build.DISPLAY).</summary>
         public static string AndroidBuildDisplay()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR

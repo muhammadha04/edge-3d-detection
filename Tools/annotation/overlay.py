@@ -25,6 +25,7 @@ from qd3d.session import Session, find_sessions  # noqa: E402
 
 
 def draw_box(img, cam: Camera, box: UprightBox, color, thickness=2, label=None, front=True):
+    """Draws an upright box (near-plane clipped), its front face thicker, the front arrow and a label."""
     kp = box.keypoints()
     local = cam.world_to_local(kp)
     for a, b in BOX_EDGES:
@@ -53,6 +54,7 @@ def draw_box(img, cam: Camera, box: UprightBox, color, thickness=2, label=None, 
 
 
 def draw_depth(img, cam: Camera, points: np.ndarray):
+    """Draws reprojected depth points (blue = near, red = far): they must lie on the surfaces in the image."""
     if len(points) == 0:
         return
     local = cam.world_to_local(points)
@@ -67,6 +69,7 @@ def draw_depth(img, cam: Camera, points: np.ndarray):
 
 
 def draw_detections(img, cam: Camera, det_frame: dict):
+    """Draws detector 2D boxes (orange), 3D fits (magenta) and confirmed tracks (cyan)."""
     H, W = img.shape[:2]
     for d in det_frame.get("detections", []):
         x0, y0, x1, y1 = d["viewport"]
@@ -84,6 +87,7 @@ def draw_detections(img, cam: Camera, det_frame: dict):
 
 def run(session_path: Path, out: Path, detections: str = None, depth: bool = False, png_every: int = 0, max_frames: int = 0,
         fps: float = 0) -> dict:
+    """Writes the MP4 (and optional PNGs) for one session; returns frame / box counts."""
     s = Session(session_path)
     det_by_frame = {}
     if detections:
@@ -127,6 +131,7 @@ def run(session_path: Path, out: Path, detections: str = None, depth: bool = Fal
 
 
 def main(argv=None) -> int:
+    """Command line entry point (see the module docstring)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("sessions", nargs="+")
     ap.add_argument("--out", help="output MP4 (default <session>/overlay.mp4)")

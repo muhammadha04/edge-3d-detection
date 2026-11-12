@@ -20,6 +20,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Catalog";
 
+        /// <summary>Paged object list (name, category, tape, photo, annotation count) and Add object.</summary>
         public void Build(AnnPanel p)
         {
             var objects = m_mode.Catalog.Objects;
@@ -73,6 +74,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Object: " + m_obj.Name;
 
+        /// <summary>Tabs Identity / Tape dims / Photo and Back.</summary>
         public void Build(AnnPanel p)
         {
             p.BeginRow();
@@ -96,12 +98,14 @@ namespace QuestDetect3D.Annotation
             p.Button("Back to catalog", () => m_mode.Show(new CatalogScreen(m_mode)), true, null, 56);
         }
 
+        /// <summary>Switches tab.</summary>
         private void SetTab(int tab)
         {
             m_tab = tab;
             m_mode.Refresh();
         }
 
+        /// <summary>Name, category, symmetry, front definition, notes.</summary>
         private void BuildIdentity(AnnPanel p)
         {
             p.BeginRow();
@@ -145,6 +149,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>Tape W / D / H rows.</summary>
         private void BuildDims(AnnPanel p)
         {
             p.Label("Tape-measured size of the ground-truth box (extremes, cm). Shown live against the annotated box.", 22, AnnPanel.DimText);
@@ -153,6 +158,7 @@ namespace QuestDetect3D.Annotation
             DimRow(p, "H (height, floor-top)", () => m_obj.TapeDimsCm.H, v => m_obj.TapeDimsCm.H = v, "tape_h_cm");
         }
 
+        /// <summary>One dimension: value, −1 / −0.1 / +0.1 / +1 cm and Type (numeric keyboard).</summary>
         private void DimRow(AnnPanel p, string name, Func<float> get, Action<float> set, string field)
         {
             p.Label($"{name}: <b>{(get() > 0f ? get().ToString("0.0") + " cm" : "—")}</b>", 26);
@@ -180,6 +186,7 @@ namespace QuestDetect3D.Annotation
             p.EndRow();
         }
 
+        /// <summary>Thumbnail and Take photo.</summary>
         private void BuildPhoto(AnnPanel p)
         {
             if (!m_thumbLoaded)
@@ -205,6 +212,7 @@ namespace QuestDetect3D.Annotation
                 AnnPanel.PrimaryButton);
         }
 
+        /// <summary>Loads photos/&lt;id&gt;.jpg for display.</summary>
         private void LoadThumb()
         {
             m_thumbLoaded = true;
@@ -223,6 +231,7 @@ namespace QuestDetect3D.Annotation
             m_thumb.LoadImage(File.ReadAllBytes(path));
         }
 
+        /// <summary>Captures the passthrough camera image, shows it and saves a JPEG on a worker thread.</summary>
         private void TakePhoto()
         {
             m_frames ??= new PcaFrameSource(m_mode.Context.Camera);
@@ -279,6 +288,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Stores the photo file name in the catalog (audited, with the camera pose).</summary>
         private void PhotoSaved(string file, CameraModel cam)
         {
             var old = m_obj.Photo;
@@ -295,6 +305,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>Next / previous ObjectCategory.</summary>
         private void CycleCategory(int dir)
         {
             var cycle = Categories.Cycle;
@@ -303,6 +314,7 @@ namespace QuestDetect3D.Annotation
             Change("category", m_obj.Category, next, () => m_obj.Category = next);
         }
 
+        /// <summary>none → 2-fold → 4-fold (used for yaw alignment and symmetry-aware yaw error).</summary>
         private void CycleSymmetry(int dir)
         {
             var index = Math.Max(0, Array.IndexOf(Symmetries, m_obj.Symmetry));
@@ -310,15 +322,19 @@ namespace QuestDetect3D.Annotation
             Change("symmetry", m_obj.Symmetry, next, () => m_obj.Symmetry = next);
         }
 
+        /// <summary>Display text of a symmetry value.</summary>
         public static string SymmetryText(string s) => s == "2" ? "2-fold (180°)" : s == "4" ? "4-fold (90°)" : "none";
 
+        /// <summary>Opens the text keyboard.</summary>
         private void EditText(string title, string initial, Action<string> done) => EditText(title, initial, false, done);
 
+        /// <summary>Opens the keyboard (text or numeric).</summary>
         private void EditText(string title, string initial, bool numeric, Action<string> done)
         {
             m_mode.Keyboard.Open(title, initial, numeric, done);
         }
 
+        /// <summary>Applies a field change, saves the catalog and audits old → new.</summary>
         private void Change(string field, string oldValue, string newValue, Action apply)
         {
             if (oldValue == newValue)
@@ -339,6 +355,7 @@ namespace QuestDetect3D.Annotation
             m_mode.Refresh();
         }
 
+        /// <summary>Frees the thumbnail texture.</summary>
         public void OnLeave()
         {
             if (m_thumb != null)

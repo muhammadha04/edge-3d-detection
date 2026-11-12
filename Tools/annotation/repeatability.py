@@ -33,6 +33,7 @@ METHODS = ["M1", "M2", "M4"]
 
 
 def method_rows(root: DataRoot):
+    """Per object and method: spread, time, rating, tape Δ, verify; plus method-agreement rows."""
     rows, agreement = [], []
     for room in root.rooms():
         if not room:
@@ -82,6 +83,7 @@ def method_rows(root: DataRoot):
 
 
 def drift_rows(root: DataRoot):
+    """Drift / room-cross checks and anchor re-placements of every room."""
     rows, anchors = [], []
     for room in root.rooms():
         if not room:
@@ -98,6 +100,7 @@ def drift_rows(root: DataRoot):
 
 
 def fmt(v):
+    """Value formatting for the Markdown tables."""
     if v is None:
         return "—"
     if isinstance(v, bool):
@@ -108,6 +111,7 @@ def fmt(v):
 
 
 def table(rows, keys):
+    """Markdown table of the given columns."""
     if not rows:
         return ["(none)"]
     out = ["| " + " | ".join(keys) + " |", "|" + "---|" * len(keys)]
@@ -116,6 +120,7 @@ def table(rows, keys):
 
 
 def write_csv(path: Path, rows):
+    """Rows → CSV (nothing when empty)."""
     if not rows:
         return
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -125,6 +130,7 @@ def write_csv(path: Path, rows):
 
 
 def run(root_path: Path, out: Path):
+    """Writes repeatability.md / .csv, method_agreement.csv and drift.csv. Returns the rows."""
     root = DataRoot(root_path)
     rows, agreement = method_rows(root)
     drift, anchors = drift_rows(root)
@@ -158,6 +164,7 @@ def run(root_path: Path, out: Path):
 
 
 def main(argv=None) -> int:
+    """Command line entry point (see the module docstring)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", help="QD3D folder (Data/QD3D)")
     ap.add_argument("--out", help="output folder (default <root>/reports)")

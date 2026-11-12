@@ -1,3 +1,34 @@
+// =====================================================================================================================
+// QD3D ANNOTATE – OPERATOR GUIDE (the full guide with pictures of the set-up is Docs/annotation-quickstart.md)
+// ---------------------------------------------------------------------------------------------------------------------
+// Purpose: ground-truth 3D boxes for the thesis (accuracy + calibration claims rest on them), plus recordings that
+// any model can later be replayed on, on the PC (Tools/annotation, AnalyseSessions.bat).
+//
+// Before: tape two crosses on the floor with masking tape (arms ~30 cm): the ROOM cross near the objects and a DRIFT
+// cross ≥ 2 m away. Mark a pen dot on a table for the tip calibration. Tape-measure every object (W, D, H to the
+// extremes, cm). Nothing is printed.
+//
+// In the app (start menu → Mode: Annotate → Start annotating):
+//   1. Home → Operator name (once).                                       2. Calibrate tip: each controller you use,
+//   3. Room → New room → Place room cross (tip on centre, then on an arm)      residual < 3 mm (repeat otherwise).
+//      → Drift check (first touch sets the reference) → Place test box.
+//   4. Catalog → Add object → name, category, tape W/D/H, symmetry, front definition, photo.
+//   5. Annotate → object → M1 Touch, Blind ON → front point 1, front point 2, then front/back/left/right/top-most
+//      → Edit box (walk around: red dots = object outside → pull that face) → Confirm → rate 1–5 → Repeat.
+//   6. Verify → walk around, OK / Redo per object.
+//   7. Record → 5 Hz, depth ON, detector ON → Drift check (session_start) → Start → walk 2 min at 0.7–3 m → Stop →
+//      Drift check (session_end).                                         8. Export (optional) → PC: PullSession.bat
+//
+// How much (pilot → full dataset):
+//   pilot      1 room, 1 chair: M1 ×3 and M2 ×3 blind repetitions, 2 recordings (normal + dim light).
+//   dataset    15–25 objects over 2–3 rooms (hold 1 room out for testing); per object ≥ 3 blind M1 repetitions
+//              (take a few steps away between repeats); per room ≥ 3 recordings of 2 min (≥ 1 per lighting) so the
+//              PC split by session has train/val/test; ≤ 6 objects in one recording keeps every object in view often.
+//   quality    go ahead when centre σ ≤ 1.5 cm and the box is within 1 cm of the tape (repeatability.py says so);
+//              drift-cross change < 1–2 cm per session; tip residual < 3 mm.
+// Never annotate with the detector shown (M1/M2 hide it). M4 Assisted is stored but is never the primary truth.
+// =====================================================================================================================
+//
 // QD3D Annotate mode controller. Detect3DApp calls Enter() when "Annotate" is started from the start menu and
 // Exit() when the user leaves; nothing here runs in Detect mode (the EventSystem child stays inactive).
 // Owns the data (AnnotationStore: catalog, rooms, annotations, calibration), the room frame (RoomService), the
@@ -96,6 +127,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ enter / exit
 
+        /// <summary>Starts Annotate mode (called by Detect3DApp when the start menu says Annotate): loads all data, shows the panel and the controller rays, opens Home.</summary>
         public void Enter(AnnotationContext context)
         {
             Context = context;
@@ -114,6 +146,7 @@ namespace QuestDetect3D.Annotation
             Audit("mode_enter", new JObject { ["app_version"] = Application.version });
         }
 
+        /// <summary>Leaves Annotate mode: stops a running recording, hides panel/rays/drawings, disables the EventSystem. Detect mode is untouched.</summary>
         public void Exit()
         {
             if (!IsActive)
@@ -153,8 +186,10 @@ namespace QuestDetect3D.Annotation
             Log.Info("ann_exit");
         }
 
+        /// <summary>Asks Detect3DApp to leave Annotate mode and reopen the start menu (Home → Exit button).</summary>
         public void RequestExit() => ExitRequested?.Invoke();
 
+        /// <summary>Reads catalog, calibration and the last used room from persistentDataPath/QD3D and starts localising that room's anchor.</summary>
         private void LoadData()
         {
             Store = new AnnotationStore(DataRoot);
@@ -180,6 +215,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Activates the EventSystem + Interaction SDK canvas module (built by SceneBuilder; created here only as a fallback).</summary>
         private void EnsureEventSystem()
         {
             if (m_eventSystem == null)
@@ -195,6 +231,7 @@ namespace QuestDetect3D.Annotation
             m_eventSystem.SetActive(true);
         }
 
+        /// <summary>Creates the rig helper, the drawing mesh, the panel and one ray per controller (once).</summary>
         private void EnsureUi()
         {
             var rig = FindFirstObjectByType<OVRCameraRig>();
@@ -227,6 +264,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ screens
 
+        /// <summary>Switches the panel to another screen (calls OnLeave on the old one) and rebuilds it.</summary>
         public void Show(IAnnScreen screen)
         {
             if (m_screen != null && !ReferenceEquals(m_screen, screen))
@@ -248,10 +286,13 @@ namespace QuestDetect3D.Annotation
         /// never destroys itself while its own click is still being dispatched.</summary>
         public void Refresh() => m_refreshQueued = true;
 
+        /// <summary>Queues an action from a worker thread to run on the main thread in the next Update.</summary>
         public void RunOnMain(Action action) => m_mainThread.Enqueue(action);
 
+        /// <summary>Moves the panel in front of the user at reading distance (0.8 m).</summary>
         public void PlacePanel() => m_panel?.PlaceInFront(Context.Head);
 
+        /// <summary>Clears the panel and lets the current screen describe its content again.</summary>
         private void Rebuild()
         {
             m_refreshQueued = false;
@@ -265,6 +306,7 @@ namespace QuestDetect3D.Annotation
             m_screen.Build(m_panel);
         }
 
+        /// <summary>Per frame: main-thread queue, room anchor, keyboard, recorder, panel buttons (Menu / X), then the current screen's Tick.</summary>
         private void Update()
         {
             if (!IsActive)
@@ -314,6 +356,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Uploads this frame's drawings and applies a pending screen refresh (after button callbacks have finished).</summary>
         private void LateUpdate()
         {
             if (!IsActive)
@@ -353,6 +396,7 @@ namespace QuestDetect3D.Annotation
             return ray != null && ray.IsOnPanel;
         }
 
+        /// <summary>Turns one controller's UI ray on or off (the tip calibration needs the trigger for itself).</summary>
         public void SetRayEnabled(OVRInput.Controller c, bool enabled)
         {
             var ray = c == OVRInput.Controller.LTouch ? m_leftRay : m_rightRay;
@@ -377,6 +421,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ detector hook (Detect3DApp)
 
+        /// <summary>Called by Detect3DApp for every YOLO + depth frame while WantsDetector is true: keeps the latest tracks (M4) and records them.</summary>
         public void OnDetectorFrame(YoloFrame frame, IReadOnlyList<DetectorFit> fits, IReadOnlyList<TrackedObject> tracks)
         {
             if (!IsActive)
@@ -394,6 +439,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ data actions (logged + audited)
 
+        /// <summary>Makes a room current: loads its annotations, remembers it for the next launch and starts localising its anchor.</summary>
         public void SetRoom(RoomFile room, bool audit = true)
         {
             CurrentRoom = room;
@@ -408,6 +454,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Writes the current room file (atomic).</summary>
         public void SaveRoom()
         {
             if (CurrentRoom != null)
@@ -416,15 +463,19 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Writes catalog.json (atomic).</summary>
         public void SaveCatalog() => Store.SaveCatalog(Catalog);
+        /// <summary>Writes annotations/&lt;room&gt;.json (atomic).</summary>
         public void SaveAnnotations() => Store.SaveAnnotations(Annotations);
 
+        /// <summary>Writes calibration.json and applies the tip offsets to the controllers.</summary>
         public void SaveCalibration()
         {
             Store.SaveCalibration(Calibration);
             Rig.ApplyCalibration(Calibration);
         }
 
+        /// <summary>Creates a room (name from the keyboard, or Room_NN) and makes it current.</summary>
         public RoomFile NewRoom(string name)
         {
             var names = new List<string>();
@@ -445,6 +496,7 @@ namespace QuestDetect3D.Annotation
             return room;
         }
 
+        /// <summary>Adds a catalog object with the next free name (Chair_NN); edit it afterwards in the Catalog.</summary>
         public ObjectEntry NewObject()
         {
             var names = new List<string>();
@@ -459,6 +511,7 @@ namespace QuestDetect3D.Annotation
             return entry;
         }
 
+        /// <summary>Number of repetitions (all methods) stored for an object in the current room.</summary>
         public int RepetitionCount(string objectId)
         {
             var o = Annotations?.Find(objectId);
@@ -478,6 +531,7 @@ namespace QuestDetect3D.Annotation
             return 0f;
         }
 
+        /// <summary>World floor height for drawing: FloorEstimator if available, else the room cross height.</summary>
         public float FloorWorldY()
         {
             if (Context.Floor != null && Context.Floor.HasFloor)
@@ -517,6 +571,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Writes an audit line when the headset is taken off / the app is paused.</summary>
         private void OnApplicationPause(bool paused)
         {
             if (paused && IsActive)
@@ -525,6 +580,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Finishes a running recording when the app closes.</summary>
         private void OnApplicationQuit()
         {
             if (Recorder != null && Recorder.IsRecording)

@@ -52,6 +52,7 @@ MAX_GT_DISTANCE = 5.0
 
 
 def bin_name(d: float) -> str:
+    """Distance bin label of a camera→object distance (m)."""
     for lo, hi in DIST_BINS:
         if lo <= d < hi:
             return f"{lo:.0f}-{hi:.0f} m" if hi < 99 else f"{lo:.0f}+ m"
@@ -79,6 +80,7 @@ def gt_bbox_viewport(cam: Camera, box: UprightBox) -> Optional[List[float]]:
 
 
 def iou_2d(a, b) -> float:
+    """IoU of two viewport rectangles [xmin, ymin, xmax, ymax]."""
     iw = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
     ih = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
     inter = iw * ih
@@ -87,10 +89,12 @@ def iou_2d(a, b) -> float:
 
 
 def same_category(pred: str, gt: str) -> bool:
+    """Case-insensitive category match (catalog 'Chair' vs detector 'Chair')."""
     return str(pred).lower() == str(gt).lower()
 
 
 def frame_room(sess: Session, line: dict) -> Optional[RoomFrame]:
+    """Room frame for a detection line: its own, else the matching / nearest recorded frame, else session start."""
     if line.get("room_frame"):
         return RoomFrame.from_dict(line["room_frame"])
     rec = sess.frame(line.get("frame_id")) if str(line.get("source", "")).startswith("pc:") else sess.nearest_frame(line.get("t_realtime", 0))
@@ -181,6 +185,7 @@ def evaluate_file(sess: Session, path: Path) -> Dict[str, list]:
 
 
 def summarise(name: str, result: Dict, plots: Optional[Path]) -> List[dict]:
+    """Metrics per unit (fits / tracks / 2d) of one source: AP, errors, per-distance values, Spearman, ECE (+ plots)."""
     rows = []
     for unit, preds in result["preds"].items():
         gt = result["gt"][unit]
@@ -220,6 +225,7 @@ def summarise(name: str, result: Dict, plots: Optional[Path]) -> List[dict]:
 
 
 def plot(name: str, unit: str, preds: list, pairs: list, rel: dict, out: Path):
+    """Reliability diagram, centre error vs distance and confidence vs error for one source/unit."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -242,12 +248,14 @@ def plot(name: str, unit: str, preds: list, pairs: list, rel: dict, out: Path):
 
 
 def fmt(v) -> str:
+    """Number formatting for the Markdown tables (n/a for NaN)."""
     if isinstance(v, float):
         return "n/a" if math.isnan(v) else f"{v:.3f}" if abs(v) < 10 else f"{v:.1f}"
     return str(v)
 
 
 def run(session_paths: List[Path], detection_names: List[str], out: Path, plots: bool = True) -> List[dict]:
+    """Evaluates every chosen detections file of every session; writes report.md, summary.csv, pairs.csv, plots/. Returns the summary rows."""
     out.mkdir(parents=True, exist_ok=True)
     merged: Dict[str, Dict] = {}
     all_pairs: List[dict] = []
@@ -305,6 +313,7 @@ def run(session_paths: List[Path], detection_names: List[str], out: Path, plots:
 
 
 def main(argv=None) -> int:
+    """Command line entry point (see the module docstring)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("sessions", nargs="+")
     ap.add_argument("--detections", action="append", default=[], help="file name inside each session (repeatable; default: all *.jsonl outputs)")

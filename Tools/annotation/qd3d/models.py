@@ -41,6 +41,7 @@ DEFAULT_LABELS = ROOT / "Assets/PassthroughCameraApiSamples/MultiObjectDetection
 
 
 def _iou_xyxy(a, b) -> float:
+    """IoU of two [x1, y1, x2, y2] boxes."""
     iw = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
     ih = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
     inter = iw * ih
@@ -56,6 +57,7 @@ class YoloOnnx:
 
     def __init__(self, model: Optional[str] = None, labels: Optional[str] = None, score: float = 0.25, iou: float = 0.55,
                  max_det: int = 12, allowed: Optional[Sequence[str]] = None, providers: Optional[List[str]] = None):
+        """Loads the ONNX model (input size read from it) and the class names."""
         import onnxruntime as ort
         self.model_path = Path(model) if model else DEFAULT_MODEL
         self.session = ort.InferenceSession(str(self.model_path), providers=providers or ["CPUExecutionProvider"])
@@ -68,17 +70,20 @@ class YoloOnnx:
         self.name = f"onnx:{self.model_path.stem}@{self.input_w}"
 
     def preprocess(self, image_bgr: np.ndarray) -> np.ndarray:
+        """BGR frame → 1×3×H×W float RGB in 0..1, stretched bilinearly to the model input (like the app)."""
         rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         resized = cv2.resize(rgb, (self.input_w, self.input_h), interpolation=cv2.INTER_LINEAR)
         return resized.astype(np.float32).transpose(2, 0, 1)[None] / 255.0
 
     def raw(self, image_bgr: np.ndarray) -> np.ndarray:
+        """Raw network output as (4 + classes) × anchors."""
         out = self.session.run(None, {self.input_name: self.preprocess(image_bgr)})[0][0]
         if out.shape[0] > out.shape[1]:  # (N, 4+C) layout
             out = out.T
         return out  # (4+C, N)
 
     def run(self, image_bgr: np.ndarray, frame: Optional[dict] = None) -> List[Dict]:
+        """Detections of one frame in the device schema (viewport boxes, bottom-left origin)."""
         out = self.raw(image_bgr)
         boxes, cls_scores = out[:4].T, out[4:].T
         cls = cls_scores.argmax(axis=1)
@@ -94,7 +99,7 @@ class YoloOnnx:
         cand.sort(key=lambda c: -c[0])
         out_dets, suppressed = [], [False] * len(cand)
         for a in range(len(cand)):
-            if suppressed[a] or len(out_dets) >= YoloOnnx_MAX(self):
+            if suppressed[a] or len(out_dets) >= self.max_det:
                 continue
             s, c, label, cat, xyxy = cand[a]
             x1, y1, x2, y2 = (np.clip(xyxy[0] / self.input_w, 0, 1), np.clip(xyxy[1] / self.input_h, 0, 1),
@@ -107,10 +112,6 @@ class YoloOnnx:
                 if not suppressed[b] and CATEGORY_GROUP.get(cand[b][3]) == CATEGORY_GROUP.get(cat) and _iou_xyxy(xyxy, cand[b][4]) > self.iou:
                     suppressed[b] = True
         return out_dets
-
-
-def YoloOnnx_MAX(m: YoloOnnx) -> int:
-    return m.max_det
 
 
 def load_plugin(spec: str, args: Optional[str] = None):

@@ -67,25 +67,36 @@ namespace QuestDetect3D.Annotation
             return new RoomFrame(position, Mathf.Atan2(f.x, f.z));
         }
 
+        /// <summary>Room-frame point → world point.</summary>
         public Vector3 RoomToWorld(Vector3 p) => Origin + Rotation * p;
+        /// <summary>World point → room-frame point.</summary>
         public Vector3 WorldToRoom(Vector3 p) => Quaternion.Inverse(Rotation) * (p - Origin);
+        /// <summary>World direction → room-frame direction.</summary>
         public Vector3 DirectionToRoom(Vector3 d) => Quaternion.Inverse(Rotation) * d;
+        /// <summary>Room-frame direction → world direction.</summary>
         public Vector3 DirectionToWorld(Vector3 d) => Rotation * d;
+        /// <summary>World rotation → room-frame rotation.</summary>
         public Quaternion RotationToRoom(Quaternion q) => Quaternion.Inverse(Rotation) * q;
+        /// <summary>Room-frame rotation → world rotation.</summary>
         public Quaternion RotationToWorld(Quaternion q) => Rotation * q;
+        /// <summary>World heading → room heading (radians, wrapped to ±π).</summary>
         public float YawToRoom(float worldYaw) => WrapPi(worldYaw - Yaw);
+        /// <summary>Room heading → world heading (radians, wrapped to ±π).</summary>
         public float YawToWorld(float roomYaw) => WrapPi(roomYaw + Yaw);
 
+        /// <summary>World box → room-frame box (what is stored).</summary>
         public UprightBox BoxToRoom(UprightBox world)
         {
             return new UprightBox(WorldToRoom(world.BottomCenter), YawToRoom(world.Yaw), world.Size);
         }
 
+        /// <summary>Stored room-frame box → world box (what is drawn).</summary>
         public UprightBox BoxToWorld(UprightBox room)
         {
             return new UprightBox(RoomToWorld(room.BottomCenter), YawToWorld(room.Yaw), room.Size);
         }
 
+        /// <summary>Angle wrapped to [−π, π).</summary>
         public static float WrapPi(float a)
         {
             const float twoPi = 2f * Mathf.PI;
@@ -93,6 +104,7 @@ namespace QuestDetect3D.Annotation
             return a;
         }
 
+        /// <summary>Origin and heading for logs.</summary>
         public override string ToString() =>
             IsValid ? $"origin=({Origin.x:F3},{Origin.y:F3},{Origin.z:F3}) yaw={Yaw * Mathf.Rad2Deg:F2}°" : "invalid";
     }

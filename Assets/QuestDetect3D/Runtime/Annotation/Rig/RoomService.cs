@@ -32,6 +32,7 @@ namespace QuestDetect3D.Annotation
         /// <summary>Called on the main thread when the state changes (UI refresh, audit).</summary>
         public event Action<RoomFrameState, string> Changed;
 
+        /// <summary>Forgets the current anchor and frame (no room selected).</summary>
         public void Clear()
         {
             m_generation++;
@@ -51,6 +52,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Loads the room's saved anchor by UUID and localises it (15 s timeout). Failure is reported, never replaced by a new frame.</summary>
         public async void Load(RoomFile room)
         {
             var generation = ++m_generation;
@@ -178,6 +180,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Removes the anchor GameObject of this session (the saved anchor stays on the headset).</summary>
         private void DestroyAnchor()
         {
             if (m_anchor != null)
@@ -187,6 +190,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Changes state + status text, logs it and notifies listeners.</summary>
         private void Set(RoomFrameState state, string status)
         {
             State = state;
@@ -195,6 +199,7 @@ namespace QuestDetect3D.Annotation
             Changed?.Invoke(state, status);
         }
 
+        /// <summary>First 8 characters of a UUID for display.</summary>
         public static string Short(string uuid) => string.IsNullOrEmpty(uuid) ? "none" : uuid.Length > 8 ? uuid.Substring(0, 8) : uuid;
     }
 }

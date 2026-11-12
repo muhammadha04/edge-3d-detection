@@ -10,6 +10,7 @@ namespace QuestDetect3D.Annotation
     {
         public static readonly string[] PrimaryMethods = { "M1", "M2" };
 
+        /// <summary>Recomputes accepted_by_method and the primary accepted box after a repetition was added or rejected.</summary>
         public static void Recompute(ObjectAnnotations obj, string symmetry, string timestamp)
         {
             var period = Repeatability.PeriodFor(symmetry);

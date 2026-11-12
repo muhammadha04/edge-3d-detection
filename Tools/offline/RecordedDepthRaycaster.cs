@@ -21,6 +21,7 @@ public sealed class RecordedDepthRaycaster : IDepthRaycaster
     public bool IsAvailable => m_mm != null;
     public int Rays { get; private set; }
 
+    /// <summary>Uses one recorded depth map (uint16 mm, row 0 first) with its reprojection matrix and z-buffer parameters.</summary>
     public void SetFrame(ushort[] mm, int width, int height, double[] reprojection, double zb0, double zb1)
     {
         m_mm = mm;
@@ -32,6 +33,7 @@ public sealed class RecordedDepthRaycaster : IDepthRaycaster
         m_zb1 = zb1;
     }
 
+    /// <summary>No depth for the current frame (every raycast misses).</summary>
     public void Clear() => m_mm = null;
 
     /// <summary>Recorded depth (m) at the pixel the point projects to, and the point's own linear depth.</summary>
@@ -66,6 +68,7 @@ public sealed class RecordedDepthRaycaster : IDepthRaycaster
         return true;
     }
 
+    /// <summary>Depth pixel → world point (false when the pixel has no depth).</summary>
     public Vector3 Unproject(int col, int row, out bool ok)
     {
         ok = false;
@@ -86,6 +89,7 @@ public sealed class RecordedDepthRaycaster : IDepthRaycaster
         return ok ? new Vector3((float)(hx / hw), (float)(hy / hw), (float)(hz / hw)) : default;
     }
 
+    /// <summary>IDepthRaycaster: first recorded surface along the ray (march 0.5–1 % of the distance, then 10 bisection steps).</summary>
     public bool Raycast(Ray ray, float maxDistance, out Vector3 point, out Vector3 normal)
     {
         point = default;
@@ -144,6 +148,7 @@ public sealed class RecordedDepthRaycaster : IDepthRaycaster
         return false;
     }
 
+    /// <summary>Surface normal from neighbouring depth pixels, facing the ray.</summary>
     private Vector3 NormalAt(int col, int row, Vector3 rayDir)
     {
         var p0 = Unproject(col, row, out var ok0);
@@ -175,6 +180,7 @@ public sealed class RecordedDepthRaycaster : IDepthRaycaster
         return Vector3.Dot(n, rayDir) > 0f ? -n : n;
     }
 
+    /// <summary>4×4 matrix inverse (Gauss-Jordan), null when singular.</summary>
     private static double[] Invert(double[] m)
     {
         var a = new double[16];

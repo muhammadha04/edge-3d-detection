@@ -23,6 +23,7 @@ namespace QuestDetect3D.Annotation
         public int Used;
         public int Total;
 
+        /// <summary>One-line result for logs and the panel.</summary>
         public override string ToString() =>
             Ok ? $"tip=({TipOffset.x * 1000f:F1},{TipOffset.y * 1000f:F1},{TipOffset.z * 1000f:F1})mm rms={RmsMm:F2}mm max={MaxMm:F2}mm spread={SpreadDeg:F0}° used={Used}/{Total}"
                 : $"failed: {Error} (poses={Total}, spread={SpreadDeg:F0}°)";
@@ -34,6 +35,7 @@ namespace QuestDetect3D.Annotation
         public const float MinSpreadDeg = 30f;
         public const float TargetRmsMm = 3f;
 
+        /// <summary>Solves the tip offset from ≥ 30 controller poses (≥ 30° rotation spread) with one outlier pass. Aim: RMS &lt; 3 mm.</summary>
         public static PivotResult Solve(IReadOnlyList<Quaternion> rotations, IReadOnlyList<Vector3> positions)
         {
             var result = new PivotResult { Total = rotations.Count };
@@ -141,6 +143,7 @@ namespace QuestDetect3D.Annotation
             };
         }
 
+        /// <summary>Least squares on the selected poses: builds and solves the 6×6 normal equations.</summary>
         private static bool SolveSubset(IReadOnlyList<Quaternion> rotations, IReadOnlyList<Vector3> positions, bool[] use,
             out double[] t, out double[] p)
         {
@@ -187,6 +190,7 @@ namespace QuestDetect3D.Annotation
             return true;
         }
 
+        /// <summary>Distance (m) of every pose's predicted tip from the solved pivot point.</summary>
         private static double[] Residuals(IReadOnlyList<Quaternion> rotations, IReadOnlyList<Vector3> positions, double[] t,
             double[] p)
         {

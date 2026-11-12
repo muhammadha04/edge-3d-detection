@@ -11,6 +11,7 @@ from .geometry import UprightBox, wrap_pi
 
 
 def align_yaw(box: UprightBox, reference_yaw: float, period: float) -> UprightBox:
+    """Box re-expressed with its yaw closest to the reference modulo the symmetry period (W/D swap on odd quarter turns)."""
     d = wrap_pi(box.yaw - reference_yaw)
     k = int(round(d / period))  # Mathf.RoundToInt uses banker's rounding; |d/period| = 0.5 only at exact ±180° for period 2π
     if k == 0:
@@ -24,6 +25,7 @@ def align_yaw(box: UprightBox, reference_yaw: float, period: float) -> UprightBo
 
 
 def robust_box(boxes: Sequence[UprightBox], period: float = 2 * math.pi) -> Dict:
+    """Robust mean (median) + gt_sigma of repetitions — identical to Repeatability.cs in the app."""
     n = len(boxes)
     if n == 0:
         return {"n": 0}
@@ -47,11 +49,13 @@ def robust_box(boxes: Sequence[UprightBox], period: float = 2 * math.pi) -> Dict
 
 
 def spearman(x: Sequence[float], y: Sequence[float]) -> float:
+    """Spearman rank correlation (NaN for < 3 values or constant input)."""
     x, y = np.asarray(x, float), np.asarray(y, float)
     if len(x) < 3 or np.all(x == x[0]) or np.all(y == y[0]):
         return float("nan")
 
     def rank(a):
+        """Ranks with ties averaged."""
         order = a.argsort()
         r = np.empty(len(a))
         r[order] = np.arange(len(a))
@@ -87,6 +91,7 @@ def average_precision(scores: Sequence[float], tp: Sequence[bool], n_gt: int) ->
 
 
 def reliability(conf: Sequence[float], correct: Sequence[bool], bins: int = 10) -> Dict:
+    """Reliability diagram bins and expected calibration error (ECE)."""
     conf = np.asarray(conf, float)
     correct = np.asarray(correct, float)
     edges = np.linspace(0, 1, bins + 1)

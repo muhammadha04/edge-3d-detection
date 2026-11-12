@@ -51,28 +51,36 @@ namespace QuestDetect3D.Annotation
         public string PhotosDir => Path.Combine(Root, "photos");
         public string SessionsDir => Path.Combine(Root, "sessions");
         public string ExportsDir => Path.Combine(Root, "exports");
+        /// <summary>rooms/&lt;roomId&gt;.json</summary>
         public string RoomPath(string roomId) => Path.Combine(RoomsDir, roomId + ".json");
+        /// <summary>annotations/&lt;roomId&gt;.json</summary>
         public string AnnotationsPath(string roomId) => Path.Combine(AnnotationsDir, roomId + ".json");
 
         // ------------------------------------------------------------------ typed load / save
 
         public CatalogFile LoadCatalog() => Load<CatalogFile>(CatalogPath) ?? new CatalogFile();
+        /// <summary>Writes catalog.json atomically.</summary>
         public void SaveCatalog(CatalogFile catalog) => Save(CatalogPath, catalog);
 
         public CalibrationFile LoadCalibration() => Load<CalibrationFile>(CalibrationPath) ?? new CalibrationFile();
+        /// <summary>Writes calibration.json atomically.</summary>
         public void SaveCalibration(CalibrationFile calibration) => Save(CalibrationPath, calibration);
 
         /// <summary>Null when the room does not exist (or its file is unreadable: see the log).</summary>
         public RoomFile LoadRoom(string roomId) => Load<RoomFile>(RoomPath(roomId));
+        /// <summary>Writes rooms/&lt;id&gt;.json atomically.</summary>
         public void SaveRoom(RoomFile room) => Save(RoomPath(room.Id), room);
 
+        /// <summary>All ground truth of a room (empty file object when none yet).</summary>
         public AnnotationFile LoadAnnotations(string roomId)
         {
             return Load<AnnotationFile>(AnnotationsPath(roomId)) ?? new AnnotationFile { RoomId = roomId };
         }
 
+        /// <summary>Writes annotations/&lt;room&gt;.json atomically.</summary>
         public void SaveAnnotations(AnnotationFile file) => Save(AnnotationsPath(file.RoomId), file);
 
+        /// <summary>Every readable room file, sorted by id.</summary>
         public List<RoomFile> ListRooms()
         {
             var rooms = new List<RoomFile>();
@@ -92,6 +100,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ creation helpers
 
+        /// <summary>Creates and saves a room with a unique id derived from its name.</summary>
         public RoomFile CreateRoom(string name)
         {
             var ids = new List<string>();
@@ -105,6 +114,7 @@ namespace QuestDetect3D.Annotation
             return room;
         }
 
+        /// <summary>Adds an object with a unique id to the catalog and saves it.</summary>
         public ObjectEntry CreateObject(CatalogFile catalog, string name, string category = "Chair")
         {
             var ids = new List<string>();
@@ -159,6 +169,7 @@ namespace QuestDetect3D.Annotation
             return s.Length == 0 ? "item" : s;
         }
 
+        /// <summary>baseId, or baseId_2, baseId_3 … when taken.</summary>
         public static string UniqueId(string baseId, ICollection<string> existing)
         {
             if (!existing.Contains(baseId))
@@ -176,6 +187,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Current time as ISO-8601 UTC with milliseconds (all files use this).</summary>
         public static string Timestamp() => UtcNow().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
 
         // ------------------------------------------------------------------ audit trail
@@ -197,6 +209,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ generic IO
 
+        /// <summary>Indented JSON with invariant culture (what every QD3D file uses).</summary>
         public static string ToJson(object value) => JsonConvert.SerializeObject(value, s_json);
         public static T FromJson<T>(string json) => JsonConvert.DeserializeObject<T>(json, s_json);
 

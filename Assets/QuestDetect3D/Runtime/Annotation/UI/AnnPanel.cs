@@ -139,6 +139,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ content
 
+        /// <summary>Removes all content (title stays).</summary>
         public void Clear()
         {
             m_parent = m_content;
@@ -150,6 +151,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Wrapped text line (default 2.8 cm high at 1 px = 1 mm).</summary>
         public Text Label(string text, int size = TextSize, Color? color = null)
         {
             var label = NewText("Label", m_parent, text, size, color ?? TextColor, TextAnchor.UpperLeft);
@@ -159,6 +161,7 @@ namespace QuestDetect3D.Annotation
             return label;
         }
 
+        /// <summary>Large button; disabled buttons are grey. onClick runs on the main thread (use AnnotationMode.Refresh to redraw).</summary>
         public Button Button(string text, Action onClick, bool enabled = true, Color? color = null, int height = ButtonHeight,
             int fontSize = ButtonSize)
         {
@@ -224,8 +227,10 @@ namespace QuestDetect3D.Annotation
             m_parent = row;
         }
 
+        /// <summary>Back to one widget per line.</summary>
         public void EndRow() => m_parent = m_content;
 
+        /// <summary>Vertical gap in pixels (= mm).</summary>
         public void Space(float pixels = 12f)
         {
             var rect = NewRect("Space", m_parent);
@@ -236,6 +241,7 @@ namespace QuestDetect3D.Annotation
 
         // ------------------------------------------------------------------ helpers
 
+        /// <summary>uGUI Text with the panel font.</summary>
         private Text NewText(string name, Transform parent, string text, int size, Color color, TextAnchor anchor)
         {
             var rect = NewRect(name, parent);
@@ -250,6 +256,7 @@ namespace QuestDetect3D.Annotation
             return label;
         }
 
+        /// <summary>Empty RectTransform child.</summary>
         private static RectTransform NewRect(string name, Transform parent)
         {
             var go = new GameObject(name, typeof(RectTransform));
@@ -257,6 +264,7 @@ namespace QuestDetect3D.Annotation
             return (RectTransform)go.transform;
         }
 
+        /// <summary>Anchors a rect to fill its parent.</summary>
         private static void Stretch(RectTransform rect)
         {
             rect.anchorMin = Vector2.zero;

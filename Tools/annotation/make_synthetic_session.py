@@ -36,6 +36,7 @@ NEAR, FAR = 0.1, 20.0
 
 
 def perspective(fov_deg: float) -> np.ndarray:
+    """OpenGL-style projection (near 0.1 m, far 20 m) used as the synthetic depth camera."""
     f = 1.0 / math.tan(math.radians(fov_deg) / 2)
     return np.array([[f, 0, 0, 0], [0, f, 0, 0], [0, 0, -(FAR + NEAR) / (FAR - NEAR), -2 * FAR * NEAR / (FAR - NEAR)], [0, 0, -1, 0]])
 
@@ -51,6 +52,7 @@ def view_matrix(position: np.ndarray, rotation_xyzw: np.ndarray) -> np.ndarray:
 
 
 def zbuffer_params():
+    """Depth linearisation parameters matching perspective(): depth = zb0 / (ndc_z + zb1)."""
     return [-2 * FAR * NEAR / (FAR - NEAR), -(FAR + NEAR) / (FAR - NEAR), 0.0, 0.0]
 
 
@@ -79,6 +81,7 @@ def ray_scene(o: np.ndarray, d: np.ndarray, box: UprightBox) -> float:
 
 
 def render_depth(M: np.ndarray, zb, box: UprightBox) -> np.ndarray:
+    """Analytic depth map (floor + box) in uint16 mm, stored exactly like the headset (row 0 = ndc_y −1)."""
     Minv = np.linalg.inv(M)
     out = np.zeros((DEPTH_SIZE, DEPTH_SIZE), np.uint16)
     for row in range(DEPTH_SIZE):
@@ -103,6 +106,7 @@ def render_depth(M: np.ndarray, zb, box: UprightBox) -> np.ndarray:
 
 
 def render_image(cam: Camera, box: UprightBox) -> np.ndarray:
+    """Painter's-algorithm rendering of the floor grid and the coloured box (stands in for a camera frame)."""
     img = np.full((H, W, 3), (90, 90, 90), np.uint8)
     # floor grid (world y = 0) every 0.5 m
     for v in np.arange(-4, 4.01, 0.5):
@@ -126,16 +130,19 @@ def render_image(cam: Camera, box: UprightBox) -> np.ndarray:
 
 
 def chair_world() -> UprightBox:
+    """The synthetic chair in world coordinates."""
     return ROOM.box_to_world(CHAIR_ROOM)
 
 
 def write_jsonl(path: Path, rows):
+    """Writes one JSON object per line."""
     with open(path, "w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
 
 
 def make(root: Path, n_frames: int = 24, seed: int = 1, session_id: str = "20261112_100000_lab") -> Path:
+    """Creates a complete QD3D folder (catalog, room, annotations, one session) and returns the session path."""
     rng = np.random.default_rng(seed)
     root.mkdir(parents=True, exist_ok=True)
     for d in ("rooms", "annotations", "photos", "sessions"):
@@ -241,6 +248,7 @@ def make(root: Path, n_frames: int = 24, seed: int = 1, session_id: str = "20261
 
 
 def main(argv=None) -> int:
+    """Command line entry point (see the module docstring)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("out", help="QD3D root to create")
     ap.add_argument("--frames", type=int, default=24)

@@ -43,6 +43,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Starts a new frame of drawings (called by AnnotationMode).</summary>
         public void Begin()
         {
             m_v.Clear();
@@ -51,6 +52,7 @@ namespace QuestDetect3D.Annotation
             m_labelCount = 0;
         }
 
+        /// <summary>Uploads the mesh and hides unused labels (called by AnnotationMode).</summary>
         public void End()
         {
             MeshUtil.Apply(m_mesh, m_v, m_c, m_t);
@@ -64,11 +66,13 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Thick line (prism) from a to b.</summary>
         public void Line(Vector3 a, Vector3 b, Color color, float halfThickness = 0.0015f)
         {
             MeshUtil.AddPrism(m_v, m_c, m_t, a, b, halfThickness, color);
         }
 
+        /// <summary>Filled quadrilateral (translucent walls).</summary>
         public void Quad(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Color color)
         {
             MeshUtil.AddQuad(m_v, m_c, m_t, p0, p1, p2, p3, color);
@@ -98,6 +102,7 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Edges, optional translucent walls and a highlighted face of an upright box.</summary>
         public void Box(UprightBox box, Color edge, float halfThickness, Color wall, bool walls, int highlightFace = -1)
         {
             var c = new Vector3[8];
@@ -152,6 +157,7 @@ namespace QuestDetect3D.Annotation
             Line(tip, tip - f * 0.08f - r * 0.05f, color, 0.004f);
         }
 
+        /// <summary>Room axes: red = +X, green = +Y (up), blue = +Z.</summary>
         public void Axes(Vector3 origin, float yaw, float length = 0.3f)
         {
             var z = new Vector3(Mathf.Sin(yaw), 0f, Mathf.Cos(yaw));
@@ -161,6 +167,7 @@ namespace QuestDetect3D.Annotation
             Line(origin, origin + z * length, new Color(0.35f, 0.6f, 1f, 1f), 0.003f);
         }
 
+        /// <summary>Text facing the user (pooled TextMesh).</summary>
         public void Label(Vector3 position, string text, Color color, float lineHeight = 0.025f)
         {
             TextMesh label;

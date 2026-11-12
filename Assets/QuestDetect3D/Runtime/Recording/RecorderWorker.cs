@@ -76,12 +76,14 @@ namespace QuestDetect3D.Recording
             Interlocked.Add(ref m_bytesWritten, Encoding.UTF8.GetByteCount(line) + 1);
         }
 
+        /// <summary>Writes a whole file (from inside a job) and counts its bytes.</summary>
         public void WriteFile(string path, byte[] bytes)
         {
             File.WriteAllBytes(path, bytes);
             Interlocked.Add(ref m_bytesWritten, bytes.Length);
         }
 
+        /// <summary>Cached append-mode writer per file.</summary>
         private StreamWriter Writer(string path)
         {
             if (!m_writers.TryGetValue(path, out var w))
@@ -93,6 +95,7 @@ namespace QuestDetect3D.Recording
             return w;
         }
 
+        /// <summary>Worker thread: runs jobs, flushes every second, closes files at the end.</summary>
         private void Loop()
         {
             var lastFlush = DateTime.UtcNow;
@@ -151,6 +154,7 @@ namespace QuestDetect3D.Recording
             m_writers.Clear();
         }
 
+        /// <summary>Flushes every open file.</summary>
         private void FlushAll()
         {
             foreach (var w in m_writers.Values)
@@ -174,6 +178,7 @@ namespace QuestDetect3D.Recording
             return m_thread.Join(timeoutMs);
         }
 
+        /// <summary>Stops the thread (finishing queued work) and frees the queue.</summary>
         public void Dispose()
         {
             if (!m_queue.IsAddingCompleted)

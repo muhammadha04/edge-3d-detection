@@ -16,6 +16,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => $"QD3D Annotate  v{Application.version}";
 
+        /// <summary>Room / frame status, operator, tip calibration state, all main buttons.</summary>
         public void Build(AnnPanel p)
         {
             var room = m_mode.CurrentRoom;
@@ -68,6 +69,7 @@ namespace QuestDetect3D.Annotation
             p.Label("Trigger = click.  Left Menu = panel in front of you.  X = hide/show panel.", 22, AnnPanel.DimText);
         }
 
+        /// <summary>Live frame status; rebuild when the anchor state changes.</summary>
         public void Tick()
         {
             if (m_status != null)
@@ -82,11 +84,13 @@ namespace QuestDetect3D.Annotation
             }
         }
 
+        /// <summary>Frame status line.</summary>
         private string RoomStatus() => "Frame: " + m_mode.Room.Status;
 
         private Color RoomColor() => m_mode.Room.State == RoomFrameState.Localized ? new Color(0.45f, 0.95f, 0.55f) :
             m_mode.Room.State == RoomFrameState.Failed ? new Color(1f, 0.4f, 0.4f) : AnnPanel.Warning;
 
+        /// <summary>Calibrated / default per controller.</summary>
         private string TipSummary()
         {
             var l = m_mode.Rig.TipIsDefault(OVRInput.Controller.LTouch) ? "L default" : "L calibrated";
@@ -103,6 +107,7 @@ namespace QuestDetect3D.Annotation
 
         public string Title => "Ground-truth rule";
 
+        /// <summary>The ground-truth definition and box convention.</summary>
         public void Build(AnnPanel p)
         {
             p.Label(GroundTruth.Definition, 30);
@@ -116,6 +121,7 @@ namespace QuestDetect3D.Annotation
 
     public static class Pager
     {
+        /// <summary>Prev / page / Next row (only when there is more than one page).</summary>
         public static void Build(AnnPanel p, int page, int pages, Action<int> step)
         {
             if (pages <= 1)
@@ -134,6 +140,7 @@ namespace QuestDetect3D.Annotation
     /// <summary>Shared drawing for touch steps: tip spheres and plumb lines from both controller tips to the floor.</summary>
     public static class TouchAids
     {
+        /// <summary>Draws both controller tips (amber = default offset, green = calibrated) and optional plumb lines to the floor.</summary>
         public static void DrawTips(AnnotationMode mode, bool plumb)
         {
             var floorY = mode.FloorWorldY();

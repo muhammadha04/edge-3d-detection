@@ -19,6 +19,7 @@ from qd3d.session import Session, find_sessions  # noqa: E402
 
 
 def main(argv=None) -> int:
+    """Prints a summary per session; with --frame also GT boxes in world/camera frame and depth statistics."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("paths", nargs="+")
     ap.add_argument("--frame", type=int, help="print camera, GT boxes (world + OpenCV camera frame) and depth stats")

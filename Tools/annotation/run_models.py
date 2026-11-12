@@ -26,6 +26,7 @@ from qd3d.session import Session, find_sessions  # noqa: E402
 
 
 def run_session(model, session_path: Path, out: Path, every: int = 1) -> dict:
+    """Runs the model on every (or every Nth) recorded frame and writes one detections line per frame."""
     s = Session(session_path)
     n = n_det = 0
     t0 = time.time()
@@ -83,6 +84,7 @@ def selftest(model: YoloOnnx) -> int:
 
 
 def main(argv=None) -> int:
+    """Command line entry point (see the module docstring)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("sessions", nargs="*")
     ap.add_argument("--model", help="ONNX model (default: the app's yolo11n_320.onnx)")
