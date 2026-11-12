@@ -47,12 +47,16 @@ namespace QuestDetect3D
         public bool UsedFloor;
         /// <summary>Points removed as a background wall (0 when no wall was found).</summary>
         public int WallPoints;
+        /// <summary>Where the heading came from: "backrest" (chairs: line fit to the top slab) or "footprint".</summary>
+        public string YawSource;
+        /// <summary>Metres added to the top from the 2D box's top edge (depth misses thin top rails).</summary>
+        public float TopCorrection;
 
         public override string ToString() =>
             Valid
                 ? $"{Box} pts={ObjectPoints}/{Hits}/{Rays} sup={SupportHits} clu={ClusterFraction:F2} in={InsideFraction:F2} " +
                   $"compl={Completion * 100f:F0}cm σd={SigmaDepth * 100f:F1}cm σpos={SigmaPos * 100f:F1}cm " +
-                  $"σyaw={SigmaYawDeg:F0}° σsize={SigmaSizeRel * 100f:F0}% d={Distance:F2}m floor={UsedFloor} wall={WallPoints}"
+                  $"σyaw={SigmaYawDeg:F0}° σsize={SigmaSizeRel * 100f:F0}% d={Distance:F2}m floor={UsedFloor} wall={WallPoints} yaw_src={YawSource} top+={TopCorrection * 100f:F0}cm"
                 : $"fail({FailReason}) pts={ObjectPoints}/{Hits}/{Rays}";
     }
 
@@ -275,9 +279,16 @@ namespace QuestDetect3D
             centroid /= pts.Count;
             m_tmp2.Sort();
             var silTop = SilhouetteTop(viewport, cam, Percentile(m_tmp2, 0.05f), Percentile(m_tmp2, 0.95f));
-            if (!float.IsNaN(silTop) && silTop - yTop > 0.15f)
+            // Depth often misses thin top edges (a chair's backrest rail). Field test 2026-11-12: YOLO+depth chair
+            // heights were 66–77 cm vs 75–92 cm from Objectron. For seating, trust the 2D box top more.
+            var seating = info.Group == CategoryGroup.Seating;
+            var topGap = seating ? 0.04f : 0.15f;
+            var topGain = seating ? 0.8f : 0.5f;
+            if (!float.IsNaN(silTop) && silTop - yTop > topGap)
             {
-                yTop += 0.5f * (silTop - yTop); // depth missed a thin top edge (backrest rail, lamp shade)
+                var add = Mathf.Min(topGain * (silTop - yTop), 0.35f);
+                r.TopCorrection = add;
+                yTop += add;
             }
 
             var height = Mathf.Clamp(yTop - bottom, 0.08f, 3f);
@@ -325,6 +336,18 @@ namespace QuestDetect3D
 
             r.SigmaYawDeg = within >= m_areaCurve.Length - 1 ? 26f : Mathf.Max(3f, within * 2f * 0.5f);
             var bestYaw = bestK * 2f * Mathf.Deg2Rad;
+            r.YawSource = "footprint";
+
+            // Chairs: footprints are nearly square, so the area curve is flat (σ yaw ≈ 26° in the field test).
+            // The backrest is a plane across the chair's width: a line fit to the top slab of points gives the
+            // heading far more precisely.
+            if (info.Category == ObjectCategory.Chair && TryBackrestYaw(pts, bottom, height, out var backYaw, out var backSigma) &&
+                backSigma < r.SigmaYawDeg)
+            {
+                bestYaw = backYaw;
+                r.SigmaYawDeg = backSigma;
+                r.YawSource = "backrest";
+            }
             RobustExtents(footprint, bestYaw, out var lo0, out var hi0, out var lo1, out var hi1);
 
             // ---- 6. completion along the viewing direction
@@ -440,6 +463,73 @@ namespace QuestDetect3D
         }
 
         private const float WallInlier = 0.035f;
+
+        /// <summary>
+        /// Heading from the backrest: principal axis of the points in the top 25 % of the object's height
+        /// (horizontal plane). Returned in [0, 90°) like the footprint search; σ from the axis elongation.
+        /// </summary>
+        private static bool TryBackrestYaw(List<Vector3> pts, float bottom, float height, out float yaw, out float sigmaDeg)
+        {
+            yaw = 0f;
+            sigmaDeg = 90f;
+            var cutoff = bottom + 0.75f * height;
+            float mx = 0f, mz = 0f;
+            var n = 0;
+            foreach (var p in pts)
+            {
+                if (p.y >= cutoff)
+                {
+                    mx += p.x;
+                    mz += p.z;
+                    n++;
+                }
+            }
+
+            if (n < 8)
+            {
+                return false;
+            }
+
+            mx /= n;
+            mz /= n;
+            float sxx = 0f, szz = 0f, sxz = 0f;
+            foreach (var p in pts)
+            {
+                if (p.y < cutoff)
+                {
+                    continue;
+                }
+
+                var dx = p.x - mx;
+                var dz = p.z - mz;
+                sxx += dx * dx;
+                szz += dz * dz;
+                sxz += dx * dz;
+            }
+
+            var tr = sxx + szz;
+            var det = sxx * szz - sxz * sxz;
+            var disc = Mathf.Sqrt(Mathf.Max(0f, tr * tr / 4f - det));
+            var l1 = tr / 2f + disc;
+            var l2 = Mathf.Max(1e-8f, tr / 2f - disc);
+            if (l1 / l2 < 4f || Mathf.Sqrt(l1 / n) < 0.08f)
+            {
+                return false; // not a clear line (≥ 2:1 in std) or too short to be a backrest
+            }
+
+            // Principal direction (dx, dz) = backrest across the chair's width = box Right axis = (cos yaw, -sin yaw).
+            var angle = 0.5f * Mathf.Atan2(2f * sxz, sxx - szz); // atan2(dz, dx) of the major axis
+            yaw = -angle;
+            var deg = yaw * Mathf.Rad2Deg % 90f;
+            if (deg < 0f)
+            {
+                deg += 90f;
+            }
+
+            yaw = deg * Mathf.Deg2Rad;
+            sigmaDeg = Mathf.Clamp(Mathf.Atan(Mathf.Sqrt(l2 / l1)) * Mathf.Rad2Deg / Mathf.Sqrt(n / 4f), 2f, 20f);
+            return true;
+        }
 
         /// <summary>Signed horizontal distance of p from a vertical plane (positive on the camera side).</summary>
         private static float PlaneDistanceXZ(Vector3 p, Vector3 planePoint, Vector3 planeNormal) =>

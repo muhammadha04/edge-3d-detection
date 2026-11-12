@@ -105,7 +105,12 @@ namespace QuestDetect3D
                     var gate = Mathf.Max(track.AssociationGate(),
                         Mathf.Max(0.6f * Mathf.Max(obs.Box.Size.x, obs.Box.Size.z), 0.07f) + 0.05f);
                     var d = HorizontalDistance(track.Estimate.BottomCenter, obs.Box.BottomCenter);
-                    if (d < gate && d < bestDistance)
+                    // Depth boxes (yaw mod 90°) jump more between single views (unseen back, heading); also accept
+                    // when either centre lies inside the other's footprint (field test: 138 new tracks, 70 merges).
+                    var overlaps = obs.YawPeriodDeg > 0f && obs.YawPeriodDeg < 359f &&
+                                   (InsideFootprint(obs.Box.BottomCenter, track.Estimate, FootprintMargin) ||
+                                    InsideFootprint(track.Estimate.BottomCenter, obs.Box, FootprintMargin));
+                    if ((d < gate || overlaps) && d < bestDistance)
                     {
                         best = track;
                         bestDistance = d;
@@ -177,7 +182,11 @@ namespace QuestDetect3D
                     }
 
                     var d = HorizontalDistance(a.Estimate.BottomCenter, b.Estimate.BottomCenter);
-                    if (d > 0.5f * Mathf.Min(a.AssociationGate(), b.AssociationGate()))
+                    var depthTracks = a.YawPeriod < 6f && b.YawPeriod < 6f;
+                    var contained = depthTracks &&
+                                    (InsideFootprint(a.Estimate.BottomCenter, b.Estimate, 0f) ||
+                                     InsideFootprint(b.Estimate.BottomCenter, a.Estimate, 0f));
+                    if (d > 0.5f * Mathf.Min(a.AssociationGate(), b.AssociationGate()) && !contained)
                     {
                         continue;
                     }
@@ -229,6 +238,18 @@ namespace QuestDetect3D
                     TrackRemoved?.Invoke(t);
                 }
             }
+        }
+
+        /// <summary>Margin (m) around a footprint for association; small enough to keep chairs 45 cm apart separate.</summary>
+        private const float FootprintMargin = 0.10f;
+
+        /// <summary>Is <paramref name="p"/> (x,z) inside the box footprint grown by <paramref name="margin"/>?</summary>
+        public static bool InsideFootprint(Vector3 p, in UprightBox box, float margin)
+        {
+            var d = p - box.BottomCenter;
+            var lx = d.x * box.Right.x + d.z * box.Right.z;
+            var lz = d.x * box.Forward.x + d.z * box.Forward.z;
+            return Mathf.Abs(lx) <= 0.5f * box.Size.x + margin && Mathf.Abs(lz) <= 0.5f * box.Size.z + margin;
         }
 
         private static float HorizontalDistance(Vector3 a, Vector3 b)

@@ -180,6 +180,8 @@ namespace QuestDetect3D.Tests
             room.AddSofa("sofa", new Vector3(-1.9f, 0f, -0.9f), 90f);
             var fitter = new DepthBoxFitter(9);
             var tracker = new ObjectTracker();
+            var removedOrMerged = 0;
+            tracker.TrackRemoved += _ => removedOrMerged++;
             var observations = new List<BoxObservation>();
             var now = 0f;
             var frames = 0;
@@ -252,7 +254,8 @@ namespace QuestDetect3D.Tests
                 tracker.ProcessMulti(observations, t => IsVisible(room, cam, t), now);
             }
 
-            r.Line($"walk-around: {frames} frames, {detections} detections, {fitFails} fit failures, {tracker.Tracks.Count} tracks");
+            r.Line($"walk-around: {frames} frames, {detections} detections, {fitFails} fit failures, {tracker.Tracks.Count} tracks, " +
+                   $"{tracker.Tracks.Count + removedOrMerged} tracks created in total (churn; ideal = number of objects)");
             foreach (var kv in failReasons)
             {
                 r.Line($"  fit failure x{kv.Value}: {kv.Key}");

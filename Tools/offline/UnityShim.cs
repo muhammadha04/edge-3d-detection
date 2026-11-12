@@ -28,6 +28,7 @@ namespace UnityEngine
         public static float Cos(float f) => (float)Math.Cos(f);
         public static float Atan2(float y, float x) => (float)Math.Atan2(y, x);
         public static float Acos(float f) => (float)Math.Acos(f);
+        public static float Atan(float f) => (float)Math.Atan(f);
         public static float Pow(float a, float b) => (float)Math.Pow(a, b);
         public static float Round(float f) => (float)Math.Round(f);
         public static int RoundToInt(float f) => (int)Math.Round(f);

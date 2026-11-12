@@ -6,7 +6,7 @@ Part of the M.Sc. thesis *Real-Time 3D Object Detection for Low Vision Accessibi
 
 ```
 Passthrough camera (1280×960, GPU texture)
-   └─► YOLOv9-t, FP16, Unity Inference Engine on the Quest GPU ──► 2D boxes + class
+   └─► YOLO11n @320, FP16, Unity Inference Engine on the Quest GPU ──► 2D boxes (chair, screen)
           └─► Quest Depth API rays inside each box ──► DepthBoxFitter ──► metric upright box + uncertainty
                  └─► multi-view tracker (class voting, confidence) ──► world-locked box, sized by uncertainty
 ```
@@ -41,7 +41,16 @@ Each session starts with an empty room; only the menu settings are remembered.
 
 **Tracking** (`Runtime/Tracking`): association within a category group (seating, table, …). The label is a weighted vote, so chair/bench confusion settles. Yaw is fused modulo 90° with an x/z size swap. **Confidence** = evidence × fit quality × cross-view consistency × agreement × view diversity × presence; a box is confirmed at ≥ 55 % with ≥ 4 hits.
 
+## Field results
+`Docs/field-test-2026-11-12.md`:
+- detection latency **67–107 ms** at 7–9 Hz (YOLO11n@320), down from ~700 ms (YOLOv9-t@640);
+- Objectron and YOLO + depth agree on chair positions within 2–9 cm at 1–3 m;
+- three fixes in 2.1.1: duplicate tracks, chair height, chair heading from the backrest.
+
 ## Model choice (measured)
+**Current:** YOLO11n (Ultralytics, AGPL-3.0), exported at **320×320**, FP16, chairs and screens only (`YoloDecode.Allowed`). On GPU the whole network is scheduled at once and the three outputs are read back together. On the test photos it beats YOLOv9-t@640 (chair 0.95 vs 0.79; the chair that YOLOv9 called "bench" is now "chair" 0.93).
+
+**Earlier comparison (YOLOv9-t@640):**
 The pretrained YOLOv9-t (MIT licence, from Meta's PCA samples) is exported by `Editor/YoloModelExport.cs` to **FP16** weights. Meta's prebuilt **uint8** file loses a lot of class confidence. Self-test against onnxruntime FP32 (`Docs/selftest-2026-11-12.txt`):
 
 | Photo / class | ONNX FP32 | Meta uint8 | Ours FP16 |

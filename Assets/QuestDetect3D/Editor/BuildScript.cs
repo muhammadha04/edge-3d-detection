@@ -38,8 +38,8 @@ namespace QuestDetect3D.EditorTools
                 PlayerSettings.productName = "QuestDetect3D";
                 PlayerSettings.companyName = "AmpliLab";
                 PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, PackageName);
-                PlayerSettings.bundleVersion = "2.1.0";
-                PlayerSettings.Android.bundleVersionCode = 3;
+                PlayerSettings.bundleVersion = "2.1.1";
+                PlayerSettings.Android.bundleVersionCode = 4;
                 EditorUserBuildSettings.development = false;
                 AssetDatabase.SaveAssets();
 
