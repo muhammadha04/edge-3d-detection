@@ -33,7 +33,17 @@ public static class ReplayRunner
         var detName = Arg(args, "--detections", "detections.jsonl");
         var detPath = File.Exists(detName) ? detName : Path.Combine(session, detName);
         var outPath = Arg(args, "--out", Path.Combine(session, "replay_" + Path.GetFileNameWithoutExtension(detPath) + ".jsonl"));
-        var floorMode = Arg(args, "--floor", "room");
+        var mode = Arg(args, "--mode", "auto"); // auto: keypoints → Objectron path, boxes → YOLO+depth; hybrid: YOLO+depth fused with keypoints found inside the box
+        var hybrid = mode == "hybrid" || (mode == "auto" && Path.GetFileName(detPath).Contains("hybrid"));
+        var fuser = new HybridFuser
+        {
+            YawWeight = float.Parse(Arg(args, "--kp-yaw-weight", "0"), System.Globalization.CultureInfo.InvariantCulture),
+            KeypointWeight = float.Parse(Arg(args, "--kp-weight", "0.35"), System.Globalization.CultureInfo.InvariantCulture),
+            ShapeAgreeDeg = float.Parse(Arg(args, "--shape-agree", "25"), System.Globalization.CultureInfo.InvariantCulture),
+        };
+        int nHybridKp = 0, nHybridFront = 0;
+        double sumV = 0;
+        var floorMode = Arg(args, "--floor", "depth"); // depth: FloorEstimator on recorded depth (as on device); room: anchor origin y; none
         if (!File.Exists(detPath))
         {
             Console.WriteLine("detections not found: " + detPath);
@@ -58,6 +68,12 @@ public static class ReplayRunner
         var raycaster = new RecordedDepthRaycaster();
         var fitter = new DepthBoxFitter();
         var tracker = new ObjectTracker();
+        // Objectron keypoint path (pc_objectron_*.jsonl): same BoxSolver + SupportPlaneEstimator as the headset.
+        var envStub = new Meta.XR.EnvironmentRaycastManager { Source = raycaster };
+        var floorEst = new FloorEstimator();
+        var head = new Transform();
+        var layoutVoter = new LayoutVoterReplay();
+        int nKpFits = 0, nKpFail = 0;
         TrackedObject.ResetIds();
         var source = Path.GetFileNameWithoutExtension(detPath);
         var loadedDepth = -1;
@@ -110,6 +126,21 @@ public static class ReplayRunner
                 }
 
                 var floorY = floorMode == "room" && room.HasValue ? room.Value.Origin.y : float.NaN;
+                if (raycaster.IsAvailable)
+                {
+                    // Floor model fed the same way as on the headset (downward depth rays from the head pose).
+                    head.position = cam.Position;
+                    head.rotation = cam.Rotation;
+                    for (var k = 0; k < 6; k++)
+                    {
+                        floorEst.Update(envStub, head);
+                    }
+                }
+
+                if (floorMode == "depth" && floorEst.HasFloor)
+                {
+                    floorY = floorEst.FloorY;
+                }
                 var fits = new List<DetectorFit>();
                 var observations = new List<BoxObservation>();
                 foreach (JObject d in line["detections"])
@@ -119,6 +150,76 @@ public static class ReplayRunner
                         continue;
                     }
 
+                    KeypointEvidence? kev = null;
+
+                    if (d["keypoints"] is JArray kps && kps.Count == KeypointDetection.KeypointCount)
+                    {
+                        var kinfo = Categories.Get(category);
+                        var kd = new KeypointDetection { Category = category, ModelScore = (float)(d["score"] ?? 1f) };
+                        var lifted = new Vector3[KeypointDetection.KeypointCount];
+                        var hasLifted = new bool[KeypointDetection.KeypointCount];
+                        for (var i = 0; i < KeypointDetection.KeypointCount; i++)
+                        {
+                            kd.Viewport[i] = new Vector2((float)kps[i][0], (float)kps[i][1]);
+                            kd.Has[i] = true;
+                            kd.Weight[i] = 1f;
+                            if (d["lifted"] is JArray la && la.Count == KeypointDetection.KeypointCount)
+                            {
+                                lifted[i] = V3(la[i]);
+                                hasLifted[i] = true;
+                            }
+                        }
+
+                        layoutVoter.Apply(kd, lifted, hasLifted, cam);
+                        var support = SupportPlaneEstimator.Estimate(kd, cam, envStub, floorEst, kinfo);
+                        var kfit = BoxSolver.Fit(kd, cam, support, kinfo);
+                        var vpk = d["viewport"];
+                        var det2 = new Detection2D
+                        {
+                            Label = d["label"]?.ToString(), Category = category, ClassId = -1, Score = kd.ModelScore,
+                            Viewport = Rect.MinMaxRect((float)vpk[0], (float)vpk[1], (float)vpk[2], (float)vpk[3]),
+                        };
+                        if (hybrid)
+                        {
+                            if (kfit.Valid)
+                            {
+                                var kq0 = ConfidenceModel.ObservationQuality(kfit, support, kd, kinfo, Vector3.Distance(cam.Position, kfit.Box.Center));
+                                kev = new KeypointEvidence { Box = kfit.Box, Quality = kq0.Total, Time = t };
+                            }
+                        }
+                        else if (!kfit.Valid)
+                        {
+                            nKpFail++;
+                            fits.Add(new DetectorFit { Detection = det2, Fit = new DepthFitResult { FailReason = kfit.FailReason } });
+                            continue;
+                        }
+
+                        if (hybrid)
+                        {
+                            goto depthPath;
+                        }
+
+                        nKpFits++;
+                        var kdist = Vector3.Distance(cam.Position, kfit.Box.Center);
+                        var kq = ConfidenceModel.ObservationQuality(kfit, support, kd, kinfo, kdist);
+                        fits.Add(new DetectorFit
+                        {
+                            Detection = det2,
+                            Fit = new DepthFitResult { Valid = true, Box = kfit.Box, Distance = kdist, SigmaPos = 0f, YawSource = "objectron", UsedFloor = floorEst.HasFloor },
+                        });
+                        var kview = kfit.Box.Center - cam.Position;
+                        kview.y = 0f;
+                        observations.Add(new BoxObservation
+                        {
+                            Box = kfit.Box, Quality = kq.Total, Breakdown = kq, Time = t,
+                            ViewDirection = kview.sqrMagnitude > 1e-6f ? kview.normalized : Vector3.forward,
+                            RmsPx = kfit.RmsPx, SupportSigma = support.Sigma, FrameId = fid, Category = category,
+                            YawPeriodDeg = 360f, Score = kd.ModelScore, SigmaPos = 0f,
+                        });
+                        continue;
+                    }
+
+                    depthPath:
                     var vp = d["viewport"];
                     var det = new Detection2D
                     {
@@ -130,6 +231,17 @@ public static class ReplayRunner
                     };
                     var info = Categories.Get(category);
                     var fit = raycaster.IsAvailable ? fitter.Fit(det.Viewport, cam, info, raycaster, floorY) : new DepthFitResult { FailReason = "no depth" };
+                    HybridResult hr = default;
+                    if (hybrid && fit.Valid)
+                    {
+                        hr = fuser.Fuse(fit, kev, cam, raycaster, floorY);
+                        if (kev.HasValue) nHybridKp++;
+                        if (hr.HasFront) nHybridFront++;
+                        sumV += hr.Verification;
+                        fit.Box = hr.Box;
+                        fit.YawSource = hr.HasFront ? "hybrid_front" : (kev.HasValue ? "hybrid_kp_disagree" : fit.YawSource);
+                    }
+
                     fits.Add(new DetectorFit { Detection = det, Fit = fit });
                     if (!fit.Valid)
                     {
@@ -139,16 +251,25 @@ public static class ReplayRunner
 
                     nFits++;
                     var quality = ConfidenceModel.DepthObservationQuality(fit, info, det.Score);
+                    var q = quality.Total;
+                    if (hybrid)
+                    {
+                        q *= 0.4f + 0.6f * hr.Verification;
+                    }
+
                     var view = fit.Box.Center - cam.Position;
                     view.y = 0f;
                     observations.Add(new BoxObservation
                     {
                         Box = fit.Box,
-                        Quality = quality.Total,
+                        Quality = q,
                         Breakdown = quality,
                         Time = t,
                         ViewDirection = view.sqrMagnitude > 1e-6f ? view.normalized : Vector3.forward,
                         RmsPx = 0f,
+                        HasFront = hr.HasFront,
+                        FrontYaw = hr.FrontYaw,
+                        Verification = hybrid ? hr.Verification : 1f,
                         SupportSigma = fit.UsedFloor ? 0.02f : 0.03f,
                         FrameId = fid,
                         Category = det.Category,
@@ -166,7 +287,12 @@ public static class ReplayRunner
             }
         }
 
-        Console.WriteLine($"replay {source}: {nFrames} frames, {nFits} fits, {nFail} failed fits, {noDepth} frames without depth, " +
+        if (hybrid)
+        {
+            Console.WriteLine($"hybrid: {nHybridKp}/{nFits} depth fits had keypoints in the box, {nHybridFront} gave the front, mean verification {(nFits > 0 ? sumV / nFits : 0):F2}");
+        }
+
+        Console.WriteLine($"replay {source}: {nFrames} frames, {nFits + nKpFits} fits ({nKpFits} keypoint), {nFail + nKpFail} failed fits, {noDepth} frames without depth, " +
                           $"{tracker.Tracks.Count} tracks, {raycaster.Rays} rays, {(DateTime.UtcNow - t0).TotalSeconds:F1} s -> {outPath}");
         return 0;
     }
@@ -265,3 +391,71 @@ public static class ReplayRunner
         return i >= 0 && i + 1 < args.Length ? args[i + 1] : fallback;
     }
 }
+
+/// <summary>Port of ObjectronDetector.ApplyLayout + LayoutVoter for replay (which keypoint bit is up / front / side).</summary>
+public sealed class LayoutVoterReplay
+{
+    private readonly float[,] m_votes = new float[3, 2];
+    private float m_total;
+
+    public void Apply(KeypointDetection det, Vector3[] lifted, bool[] hasLifted, in CameraModel camera)
+    {
+        var layout = BoxLayout.MediaPipeDefault;
+        if (hasLifted[1] && hasLifted[5] && hasLifted[3] && hasLifted[2])
+        {
+            var bits = new[] { 4, 2, 1 };
+            var best = -1;
+            var bestDot = -1f;
+            var dirs = new Vector3[3];
+            for (var b = 0; b < 3; b++)
+            {
+                dirs[b] = camera.Rotation * (lifted[1 + bits[b]] - lifted[1]);
+                var len = dirs[b].magnitude;
+                if (len < 1e-5f) { dirs[b] = Vector3.zero; continue; }
+                dirs[b] /= len;
+                var dot = Mathf.Abs(dirs[b].y);
+                if (dot > bestDot) { bestDot = dot; best = b; }
+            }
+
+            if (best >= 0)
+            {
+                det.ModelVerticality = bestDot;
+                if (bestDot >= 0.8f)
+                {
+                    var bi = best;
+                    m_votes[bi, dirs[best].y >= 0f ? 1 : 0] += bestDot;
+                    m_total += bestDot;
+                }
+            }
+        }
+
+        if (m_total >= 3f)
+        {
+            var bestV = 0f;
+            for (var b = 0; b < 3; b++)
+            for (var sgn = 0; sgn < 2; sgn++)
+            {
+                if (m_votes[b, sgn] > bestV)
+                {
+                    bestV = m_votes[b, sgn];
+                    layout.UpBit = 4 >> b;
+                    layout.UpSign = sgn == 1 ? 1 : -1;
+                }
+            }
+        }
+
+        layout.FrontBit = layout.UpBit == 1 ? 4 : 1;
+        layout.SideBit = 7 - layout.UpBit - layout.FrontBit;
+        det.Layout = layout;
+        if (hasLifted[1] && hasLifted[1 + layout.FrontBit] && hasLifted[1 + layout.SideBit])
+        {
+            var front = camera.Rotation * (lifted[1 + layout.FrontBit] - lifted[1]);
+            var side = camera.Rotation * (lifted[1 + layout.SideBit] - lifted[1]);
+            front.y = 0f;
+            side.y = 0f;
+            det.ModelFrontWorld = front.sqrMagnitude > 1e-8f ? front.normalized : Vector3.zero;
+            det.ModelSideWorld = side.sqrMagnitude > 1e-8f ? side.normalized : Vector3.zero;
+        }
+    }
+}
+

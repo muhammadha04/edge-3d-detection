@@ -141,6 +141,13 @@ namespace QuestDetect3D.Annotation
             m_rightRay?.SetActive(true);
             m_leftRay?.SetActive(true);
             Show(new HomeScreen(this));
+            // Depth texture for recording: MRUK's raycaster does not provide one, so start Meta's depth manager now
+            // (occlusion off) to have depth ready by the time Record → Start is pressed. Disabled again on Exit.
+            if (!DepthCapture.EnsureManager(out var depthWhy))
+            {
+                Log.Warn($"ann_depth_unavailable {depthWhy}");
+            }
+
             Log.Info($"ann_enter root={Store.Root} rooms={Store.ListRooms().Count} objects={Catalog.Objects.Count} " +
                      $"room={(CurrentRoom != null ? CurrentRoom.Id : "none")} operator={Operator}");
             Audit("mode_enter", new JObject { ["app_version"] = Application.version });
@@ -182,6 +189,7 @@ namespace QuestDetect3D.Annotation
                 m_eventSystem.SetActive(false);
             }
 
+            DepthCapture.ReleaseManager();
             Audit("mode_exit");
             Log.Info("ann_exit");
         }

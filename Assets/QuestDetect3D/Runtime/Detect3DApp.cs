@@ -2,6 +2,9 @@
 //   YOLO + depth (default): PCA GPU texture → YOLOv9-t (Unity Inference Engine) 2D boxes → Quest depth rays
 //       inside each box → DepthBoxFitter metric upright box + per-term uncertainty → multi-class tracker.
 //   Objectron (v2 baseline): PCA frame → MediaPipe Objectron 9 keypoints → BoxSolver (LM on support plane).
+//   Hybrid: YOLO + depth as above (recall, metric box); Objectron runs only on a crop around one YOLO chair box
+//       at a time → keypoint box gives the front (heading) and a second size/centre estimate; HybridFuser checks
+//       the result against depth (support, free-space violations, agreement) and scales the observation quality.
 // Both feed the same multi-view tracker with confidence → anchored, uncertainty-scaled 3D boxes + HUD.
 //
 // A start menu (SessionMenu) picks the display mode (box, or lab-chair scan + cyan keypoints) and the minimum
@@ -61,6 +64,21 @@ namespace QuestDetect3D
         private readonly DepthBoxFitter m_fitter = new DepthBoxFitter();
         private readonly List<Vector3> m_fitPoints = new List<Vector3>(256);
         private int m_yoloFrameId;
+
+        // Hybrid pipeline (YOLO + Objectron-in-box + depth checks)
+        private static readonly Vector2Int HybridCropResolution = new Vector2Int(640, 480);
+        private readonly HybridFuser m_fuser = new HybridFuser();
+        private readonly List<KeypointEvidence> m_kpEvidence = new List<KeypointEvidence>();
+        private readonly List<Rect> m_hybridTargets = new List<Rect>();
+        private float m_hybridTargetsTime = -10f;
+        private int m_hybridCursor;
+        private int m_hybridDwell;
+        private NativeArray<byte> m_cropBuffer;
+        private Vector2Int m_objectronResolution;
+        private int m_hybridCrops;
+        private int m_hybridKeypoints;
+        private int m_hybridFronts;
+        private float m_lastVerification;
         private Quaternion m_lastHeadRotation = Quaternion.identity;
         private float m_headSpeedDegPerSec;
         private float m_nextMenuRefresh;
@@ -156,7 +174,11 @@ namespace QuestDetect3D
 
         private static BackendType ToBackend(InferenceBackend b) => b == InferenceBackend.Cpu ? BackendType.CPU : BackendType.GPUCompute;
 
-        private bool UseYolo => m_settings != null && m_settings.Detector == DetectorKind.YoloDepth;
+        private bool UseYolo => m_settings != null && (m_settings.Detector == DetectorKind.YoloDepth || m_settings.Detector == DetectorKind.Hybrid);
+
+        private bool UseHybrid => m_settings != null && m_settings.Detector == DetectorKind.Hybrid;
+
+        private Vector2Int ObjectronResolution => UseHybrid ? HybridCropResolution : m_camera.CurrentResolution;
 
         private void StartDetector(ObjectCategory category)
         {
@@ -167,19 +189,27 @@ namespace QuestDetect3D
 
             m_category = category;
             m_debug.Clear();
-            m_detectorRoutine = StartCoroutine(m_detector.Run(category, m_camera.CurrentResolution));
+            m_objectronResolution = ObjectronResolution;
+            m_kpEvidence.Clear();
+            m_detectorRoutine = StartCoroutine(m_detector.Run(category, m_objectronResolution));
         }
 
         /// <summary>Run only the detector the session uses (Objectron costs GPU time even when idle).</summary>
         private void EnsureDetectorState()
         {
             var cameraReady = m_camera != null && m_camera.IsPlaying;
-            var wantObjectron = !MenuOpen && !AnnotateActive && !UseYolo && cameraReady && m_detector != null;
-            if (wantObjectron && m_detectorRoutine == null)
+            var wantObjectron = !MenuOpen && !AnnotateActive && (!UseYolo || UseHybrid) && cameraReady && m_detector != null;
+            if (wantObjectron && (m_detectorRoutine == null || m_objectronResolution != ObjectronResolution))
             {
+                if (m_detectorRoutine != null)
+                {
+                    StopCoroutine(m_detectorRoutine);
+                    m_detector.StopGraph();
+                }
+
                 StartDetector(ObjectCategory.Chair);
             }
-            else if (!wantObjectron && m_detectorRoutine != null && (UseYolo || AnnotateActive))
+            else if (!wantObjectron && m_detectorRoutine != null && ((UseYolo && !UseHybrid) || AnnotateActive))
             {
                 StopCoroutine(m_detectorRoutine);
                 m_detector.StopGraph();
@@ -221,6 +251,8 @@ namespace QuestDetect3D
 
             m_menu.Close();
             m_tracker.Reset();
+            m_kpEvidence.Clear();
+            m_hybridCrops = m_hybridKeypoints = m_hybridFronts = 0;
             m_backrest.Clear();
             m_debug.Enabled = m_settings.ShowScan; // scan mode shows the cyan fitted keypoints
             m_debug.Clear();
@@ -232,6 +264,8 @@ namespace QuestDetect3D
         {
             m_menu.Close();
             m_tracker.Reset();
+            m_kpEvidence.Clear();
+            m_hybridCrops = m_hybridKeypoints = m_hybridFronts = 0;
             m_backrest.Clear();
             m_debug.Enabled = false;
             m_debug.Clear();
@@ -249,6 +283,8 @@ namespace QuestDetect3D
                 ResetDetector = () =>
                 {
                     m_tracker.Reset();
+            m_kpEvidence.Clear();
+            m_hybridCrops = m_hybridKeypoints = m_hybridFronts = 0;
                     m_backrest.Clear();
                 },
                 DetectorStatus = () => m_yolo == null ? "no model" : $"{m_yolo.Status} {m_yolo.InferenceHz:F1} Hz",
@@ -273,6 +309,13 @@ namespace QuestDetect3D
                 !m_frames.IsPending && m_camera.IsUpdatedThisFrame)
             {
                 m_frames.TryCapture(OnFrameCaptured);
+            }
+
+            if (UseHybrid && !AnnotateActive && !MenuOpen && m_frames != null && m_detector != null && m_detector.IsReady &&
+                !m_detector.IsBusy && !m_frames.IsPending && m_camera.IsUpdatedThisFrame &&
+                m_headSpeedDegPerSec < MaxHeadSpeedForCapture && TryNextHybridTarget(out var target))
+            {
+                m_frames.TryCapture((rgba, context) => OnHybridFrameCaptured(rgba, context, target));
             }
 
             if ((AnnotateActive ? m_annotate.WantsDetector : UseYolo) && !MenuOpen && m_yolo != null && m_yolo.IsReady && !m_yolo.IsBusy && m_frames != null &&
@@ -303,7 +346,14 @@ namespace QuestDetect3D
 
         private void OnApplicationQuit() => Log.Flush();
 
-        private void OnDestroy() => m_yolo?.Dispose();
+        private void OnDestroy()
+        {
+            m_yolo?.Dispose();
+            if (m_cropBuffer.IsCreated)
+            {
+                m_cropBuffer.Dispose();
+            }
+        }
 
         private void TrackHeadSpeed()
         {
@@ -365,6 +415,12 @@ namespace QuestDetect3D
         {
             if (MenuOpen)
             {
+                return;
+            }
+
+            if (frame.Context.IsCrop)
+            {
+                OnHybridKeypoints(frame);
                 return;
             }
 
@@ -436,6 +492,11 @@ namespace QuestDetect3D
 
             var now = Time.realtimeSinceStartup;
             var cam = frame.Camera;
+            if (UseHybrid)
+            {
+                UpdateHybridTargets(frame.Detections, now);
+            }
+
             var floorY = m_floor.HasFloor ? m_floor.FloorY : float.NaN;
             m_observations.Clear();
             m_debug.Begin();
@@ -464,12 +525,31 @@ namespace QuestDetect3D
 
                 m_fitsOk++;
                 var quality = ConfidenceModel.DepthObservationQuality(fit, info, det.Score);
-                var view = fit.Box.Center - cam.Position;
+                var hybrid = default(HybridResult);
+                var box = fit.Box;
+                var obsQuality = quality.Total;
+                var fused = UseHybrid && det.Category == ObjectCategory.Chair;
+                if (fused)
+                {
+                    hybrid = m_fuser.Fuse(fit, FindKeypointEvidence(fit.Box, now), cam, m_depth, floorY);
+                    box = hybrid.Box;
+                    obsQuality *= 0.4f + 0.6f * hybrid.Verification;
+                    m_lastVerification = hybrid.Verification;
+                    if (hybrid.HasFront)
+                    {
+                        m_hybridFronts++;
+                    }
+                }
+
+                var view = box.Center - cam.Position;
                 view.y = 0f;
                 m_observations.Add(new BoxObservation
                 {
-                    Box = fit.Box,
-                    Quality = quality.Total,
+                    Box = box,
+                    HasFront = hybrid.HasFront,
+                    FrontYaw = hybrid.FrontYaw,
+                    Verification = fused ? hybrid.Verification : 1f,
+                    Quality = obsQuality,
                     Breakdown = quality,
                     Time = now,
                     ViewDirection = view.sqrMagnitude > 1e-6f ? view.normalized : Vector3.forward,
@@ -493,7 +573,7 @@ namespace QuestDetect3D
                 {
                     m_lastLogTime = now;
                     Log.Info($"yolo_fit frame={frame.FrameId} {det} {fit} {quality} infer={frame.InferenceMs:F0}ms " +
-                             $"layer_frames={frame.LayerFrames}");
+                             $"layer_frames={frame.LayerFrames}" + (fused ? $" {hybrid}" : ""));
                 }
             }
 
@@ -503,6 +583,146 @@ namespace QuestDetect3D
             {
                 m_annotate.OnDetectorFrame(frame, m_frameFits, m_tracker.Tracks);
             }
+        }
+
+        // ------------------------------------------------------------------ hybrid: Objectron inside YOLO boxes
+
+        /// <summary>Chair boxes of the latest YOLO frame, left to right (stable order for the round-robin).</summary>
+        private void UpdateHybridTargets(List<Detection2D> detections, float now)
+        {
+            m_hybridTargets.Clear();
+            foreach (var det in detections)
+            {
+                if (det.Category == ObjectCategory.Chair)
+                {
+                    m_hybridTargets.Add(det.Viewport);
+                }
+            }
+
+            m_hybridTargets.Sort((a, b) => a.center.x.CompareTo(b.center.x));
+            m_hybridTargetsTime = now;
+        }
+
+        /// <summary>Next YOLO box to run Objectron on: dwell 3 crops per box (Objectron tracks between frames), then move on.</summary>
+        private bool TryNextHybridTarget(out Rect target)
+        {
+            target = default;
+            if (m_hybridTargets.Count == 0 || Time.realtimeSinceStartup - m_hybridTargetsTime > 0.4f)
+            {
+                return false;
+            }
+
+            if (++m_hybridDwell >= 3)
+            {
+                m_hybridDwell = 0;
+                m_hybridCursor++;
+            }
+
+            target = m_hybridTargets[m_hybridCursor % m_hybridTargets.Count];
+            return true;
+        }
+
+        /// <summary>Crop the camera frame around the target (frame aspect, padded) into the Objectron input size.</summary>
+        private void OnHybridFrameCaptured(NativeArray<byte> rgba, FrameContext context, Rect target)
+        {
+            if (m_detector == null || !m_detector.IsReady || m_detector.IsBusy)
+            {
+                return;
+            }
+
+            var res = context.Camera.Resolution;
+            var cw = HybridCropResolution.x;
+            var ch = HybridCropResolution.y;
+            if (rgba.Length != res.x * res.y * 4)
+            {
+                return;
+            }
+
+            if (!m_cropBuffer.IsCreated)
+            {
+                m_cropBuffer = new NativeArray<byte>(cw * ch * 4, Allocator.Persistent);
+            }
+
+            var crop = HybridFuser.CropForBox(target, res, cw / (float)ch);
+            // Readback rows are bottom-up, like viewport y: row = y · H.
+            var src = rgba.Reinterpret<uint>(1);
+            var dst = m_cropBuffer.Reinterpret<uint>(1);
+            var x0 = crop.x * res.x;
+            var y0 = crop.y * res.y;
+            var sx = crop.width * res.x / cw;
+            var sy = crop.height * res.y / ch;
+            for (var y = 0; y < ch; y++)
+            {
+                var ry = Mathf.Min(res.y - 1, (int)(y0 + (y + 0.5f) * sy));
+                var srcRow = ry * res.x;
+                var dstRow = y * cw;
+                for (var x = 0; x < cw; x++)
+                {
+                    var rx = Mathf.Min(res.x - 1, (int)(x0 + (x + 0.5f) * sx));
+                    dst[dstRow + x] = src[srcRow + rx];
+                }
+            }
+
+            context.Crop = crop;
+            context.Target = target;
+            context.IsCrop = true;
+            if (m_detector.TrySubmit(m_cropBuffer, context))
+            {
+                m_hybridCrops++;
+            }
+        }
+
+        /// <summary>Objectron result on a crop: map keypoints to the full frame, keep the ones inside the YOLO box, solve.</summary>
+        private void OnHybridKeypoints(DetectionFrame frame)
+        {
+            var now = Time.realtimeSinceStartup;
+            var cam = frame.Context.Camera;
+            var info = Categories.Get(ObjectCategory.Chair);
+            m_kpEvidence.RemoveAll(e => now - e.Time > 1f);
+            foreach (var det in frame.Detections)
+            {
+                for (var i = 0; i < KeypointDetection.KeypointCount; i++)
+                {
+                    det.Viewport[i] = HybridFuser.FromCrop(frame.Context.Crop, det.Viewport[i]);
+                }
+
+                if (!HybridFuser.BelongsTo(HybridFuser.KeypointBounds(det), frame.Context.Target))
+                {
+                    continue;
+                }
+
+                var support = SupportPlaneEstimator.Estimate(det, cam, m_raycast, m_floor, info);
+                var fit = BoxSolver.Fit(det, cam, support, info);
+                if (!fit.Valid)
+                {
+                    continue;
+                }
+
+                var quality = ConfidenceModel.ObservationQuality(fit, support, det, info, Vector3.Distance(cam.Position, fit.Box.Center));
+                m_kpEvidence.Add(new KeypointEvidence { Box = fit.Box, Quality = quality.Total, Time = now });
+                m_hybridKeypoints++;
+                if (m_debug.Enabled)
+                {
+                    m_debug.Begin();
+                    m_debug.AddFit(det, cam, fit);
+                    m_debug.End();
+                }
+            }
+        }
+
+        /// <summary>Most recent keypoint box (≤ 0.6 s old) describing the same object as this depth box.</summary>
+        private KeypointEvidence? FindKeypointEvidence(in UprightBox depthBox, float now)
+        {
+            KeypointEvidence? best = null;
+            foreach (var e in m_kpEvidence)
+            {
+                if (now - e.Time <= 0.6f && m_fuser.SameObject(depthBox, e.Box) && (!best.HasValue || e.Time > best.Value.Time))
+                {
+                    best = e;
+                }
+            }
+
+            return best;
         }
 
         private bool IsExpectedVisible(TrackedObject track, CameraModel cam)
@@ -536,6 +756,7 @@ namespace QuestDetect3D
 
         private void UpdateVisuals()
         {
+            ConfidenceModel.UseCalibration = UseHybrid;
             foreach (var track in m_tracker.Tracks)
             {
                 if (!m_visuals.TryGetValue(track.Id, out var visual))
@@ -554,7 +775,7 @@ namespace QuestDetect3D
 
                 // Minimum-confidence threshold from the start menu (small hysteresis against flicker).
                 var threshold = m_settings.MinConfidence - (visual.Shown ? ShowHysteresis : 0f);
-                visual.SetShown(!MenuOpen && !AnnotateActive && track.Confidence >= threshold);
+                visual.SetShown(!MenuOpen && !AnnotateActive && ConfidenceModel.Displayed(track.Confidence) >= threshold);
 
                 var side = m_backrest.TryGetValue(track.Id, out var est) && est.Decided ? est.QuarterTurns : -1;
                 visual.SetScan(m_settings.ShowScan && track.Category == ObjectCategory.Chair, side);
@@ -683,6 +904,8 @@ namespace QuestDetect3D
             {
                 Log.Info("reset");
                 m_tracker.Reset();
+            m_kpEvidence.Clear();
+            m_hybridCrops = m_hybridKeypoints = m_hybridFronts = 0;
                 m_backrest.Clear();
                 m_debug.Clear();
             }
@@ -703,7 +926,7 @@ namespace QuestDetect3D
 
             m_hudText.Clear();
             m_hudText.Append("<b>QuestDetect3D</b>   ")
-                .Append(UseYolo ? "YOLO + depth · furniture" : "Objectron · chairs").Append('\n');
+                .Append(UseHybrid ? "Hybrid · YOLO + keypoints + depth" : UseYolo ? "YOLO + depth · furniture" : "Objectron · chairs").Append('\n');
             if (m_camera == null || !m_camera.IsPlaying)
             {
                 m_hudText.Append("Waiting for camera permission…\n");
@@ -715,6 +938,12 @@ namespace QuestDetect3D
                     : m_yolo.IsReady
                         ? $"YOLO11n {m_yolo.InferenceHz:F1} Hz · {m_yolo.LastInferenceMs:F0} ms · {(m_yolo.Backend == BackendType.CPU ? "CPU" : "GPU")}\n"
                         : $"YOLO: {m_yolo.Status}\n");
+                if (UseHybrid)
+                {
+                    m_hudText.Append(m_detector != null && m_detector.IsReady
+                        ? $"Objectron in boxes {m_detector.InferenceHz:F1} Hz · kp {m_hybridKeypoints}/{m_hybridCrops} · front {m_hybridFronts} · V {m_lastVerification:F2}\n"
+                        : $"Objectron: {(m_detector != null ? m_detector.Status : "missing")}\n");
+                }
             }
             else if (m_detector == null || !m_detector.IsReady)
             {

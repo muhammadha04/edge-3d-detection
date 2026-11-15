@@ -12,6 +12,11 @@ namespace QuestDetect3D
         public int FrameId;
         public CameraModel Camera;
         public float CaptureRealtime;
+        /// <summary>Hybrid mode: the image region (full-frame viewport) the detector saw; keypoints come back in it.</summary>
+        public Rect Crop = new Rect(0f, 0f, 1f, 1f);
+        /// <summary>Hybrid mode: the YOLO box (full-frame viewport) this crop was made for.</summary>
+        public Rect Target;
+        public bool IsCrop;
     }
 
     /// <summary>

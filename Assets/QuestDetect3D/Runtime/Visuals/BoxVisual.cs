@@ -38,6 +38,9 @@ namespace QuestDetect3D
         private float m_targetInflation;
         private float m_shownInflation;
         private Vector3 m_builtDrawSize = new Vector3(-1f, -1f, -1f);
+        // Front known (keypoint fits / Hybrid): highlight the front face and draw a floor arrow.
+        private bool m_showFront;
+        private bool m_builtShowFront;
 
         private Vector3 m_builtSize = new Vector3(-1f, -1f, -1f);
         private Vector3 m_targetPosition;
@@ -148,6 +151,7 @@ namespace QuestDetect3D
             // Pick the equivalent representation (yaw + k·period) closest to what is on screen, so a 90°-symmetric
             // depth box never visibly spins when its canonical yaw wraps.
             var periodDeg = track.YawPeriod * Mathf.Rad2Deg;
+            m_showFront = periodDeg > 359f;
             if (periodDeg < 359f)
             {
                 var reference = m_hasTarget ? m_yawFilter.Value : yawDeg;
@@ -176,7 +180,7 @@ namespace QuestDetect3D
                 m_displayQuarter = 0;
             }
 
-            m_targetConfidence = track.Confidence;
+            m_targetConfidence = ConfidenceModel.Displayed(track.Confidence);
             m_targetInflation = Mathf.Clamp(2f * track.UncertaintyCm / 100f, 0f, 0.25f);
             if (!m_hasTarget)
             {
@@ -230,7 +234,7 @@ namespace QuestDetect3D
             }
 
             m_nextTextTime = now + 0.25f;
-            var percent = Mathf.RoundToInt(track.Confidence * 100f);
+            var percent = Mathf.RoundToInt(ConfidenceModel.Displayed(track.Confidence) * 100f);
             if (confirmed)
             {
                 m_title.text = $"<b>{info.DisplayName}</b>  {percent}%";
@@ -263,9 +267,10 @@ namespace QuestDetect3D
 
             var drawSize = m_shownSize + new Vector3(2f * m_shownInflation, m_shownInflation, 2f * m_shownInflation);
             if (Mathf.Abs(drawSize.x - m_builtDrawSize.x) > 0.006f || Mathf.Abs(drawSize.y - m_builtDrawSize.y) > 0.006f ||
-                Mathf.Abs(drawSize.z - m_builtDrawSize.z) > 0.006f)
+                Mathf.Abs(drawSize.z - m_builtDrawSize.z) > 0.006f || m_showFront != m_builtShowFront)
             {
                 m_builtDrawSize = drawSize;
+                m_builtShowFront = m_showFront;
                 RebuildMeshes(drawSize);
             }
 
@@ -417,7 +422,16 @@ namespace QuestDetect3D
             MeshUtil.AddQuad(v, c, t, corners[0] + lift, corners[1] + lift, corners[5] + lift, corners[4] + lift, footprint);
             MeshUtil.AddQuad(v, c, t, corners[2], corners[3], corners[7], corners[6], face); // top
             MeshUtil.AddQuad(v, c, t, corners[0], corners[1], corners[3], corners[2], face); // back (-z)
-            MeshUtil.AddQuad(v, c, t, corners[4], corners[5], corners[7], corners[6], face); // front (+z)
+            MeshUtil.AddQuad(v, c, t, corners[4], corners[5], corners[7], corners[6], m_showFront ? new Color(1f, 1f, 1f, 0.22f) : face); // front (+z)
+            if (m_showFront)
+            {
+                // Floor arrow pointing out of the front face.
+                var w = Mathf.Min(0.18f, 0.4f * size.x);
+                var z0 = 0.5f * size.z + 0.03f;
+                var arrow = new Color(1f, 1f, 1f, 0.55f);
+                MeshUtil.AddQuad(v, c, t, new Vector3(-0.5f * w, 0.004f, z0), new Vector3(0.5f * w, 0.004f, z0),
+                    new Vector3(0f, 0.004f, z0 + 0.8f * w), new Vector3(0f, 0.004f, z0 + 0.8f * w), arrow);
+            }
             MeshUtil.AddQuad(v, c, t, corners[0], corners[4], corners[6], corners[2], face); // left
             MeshUtil.AddQuad(v, c, t, corners[1], corners[5], corners[7], corners[3], face); // right
             MeshUtil.Apply(m_faceMesh, v, c, t);

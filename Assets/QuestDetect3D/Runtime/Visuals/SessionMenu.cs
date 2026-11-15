@@ -121,9 +121,7 @@ namespace QuestDetect3D
                         m_settings.AppMode = m_settings.AppMode == AppMode.Detect ? AppMode.Annotate : AppMode.Detect;
                         break;
                     case 1:
-                        m_settings.Detector = m_settings.Detector == DetectorKind.YoloDepth
-                            ? DetectorKind.Objectron
-                            : DetectorKind.YoloDepth;
+                        m_settings.Detector = (DetectorKind)(((int)m_settings.Detector + 1) % 3);
                         break;
                     case 2:
                         m_settings.Backend = m_settings.Backend == InferenceBackend.Gpu ? InferenceBackend.Cpu : InferenceBackend.Gpu;
@@ -174,6 +172,7 @@ namespace QuestDetect3D
             }
 
             var yolo = m_settings.Detector == DetectorKind.YoloDepth;
+            var hybrid = m_settings.Detector == DetectorKind.Hybrid;
             var annotate = m_settings.AppMode == AppMode.Annotate;
             m_sb.Append(m_row == 0 ? sel : off).Append("Mode:  <b>< ").Append(annotate ? "Annotate" : "Detect").Append(" ></b></color>\n");
             m_sb.Append(hintOpen)
@@ -181,9 +180,10 @@ namespace QuestDetect3D
                 .Append(hintClose);
 
             m_sb.Append(m_row == 1 ? sel : off).Append("Detector:  <b>< ")
-                .Append(yolo ? "YOLO + depth" : "Objectron (chairs)").Append(" ></b></color>\n");
+                .Append(hybrid ? "Hybrid (YOLO + keypoints + depth)" : yolo ? "YOLO + depth" : "Objectron (chairs)").Append(" ></b></color>\n");
             m_sb.Append(hintOpen)
-                .Append(yolo ? "chairs, sofas, tables, beds, plants, screens... boxed from Quest depth"
+                .Append(hybrid ? "YOLO finds chairs, Objectron in each box gives the front, depth checks the box"
+                    : yolo ? "chairs, sofas, tables, beds, plants, screens... boxed from Quest depth"
                     : "v2 baseline: chair keypoints + box solver")
                 .Append(hintClose);
 

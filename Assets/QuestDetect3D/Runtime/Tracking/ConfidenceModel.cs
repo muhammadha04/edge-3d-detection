@@ -55,6 +55,32 @@ namespace QuestDetect3D
     public static class ConfidenceModel
     {
         public const float ConfirmThreshold = 0.55f;
+
+        /// <summary>
+        /// Hybrid mode: show calibrated confidence = P(box is correct, 3D IoU ≥ 0.25) instead of the raw track score.
+        /// Isotonic fit on 5 sessions / 2 rooms incl. false positives (Tools/annotation/calibrate_confidence.py,
+        /// 2026-11-15): leave-one-session-out ECE 0.39 → 0.04, AUROC 0.88. Raw score in steps of 0.05.
+        /// </summary>
+        public static bool UseCalibration;
+
+        private static readonly float[] s_calibration =
+        {
+            0f, 0.261f, 0.463f, 0.75f, 0.778f, 0.805f, 0.833f, 0.861f, 0.891f, 0.92f, 0.947f,
+            0.96f, 0.976f, 0.98f, 0.981f, 0.987f, 1f, 1f, 1f, 1f, 1f,
+        };
+
+        /// <summary>Confidence shown to the user and compared with the menu's minimum confidence.</summary>
+        public static float Displayed(float raw)
+        {
+            if (!UseCalibration)
+            {
+                return raw;
+            }
+
+            var x = Mathf.Clamp01(raw) * 20f;
+            var i = Mathf.Min(19, (int)x);
+            return Mathf.Min(0.99f, Mathf.Lerp(s_calibration[i], s_calibration[i + 1], x - i));
+        }
         public const int ConfirmMinHits = 4;
 
         public static QualityBreakdown ObservationQuality(

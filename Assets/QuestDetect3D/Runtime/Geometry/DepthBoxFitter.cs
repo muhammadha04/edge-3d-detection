@@ -51,12 +51,14 @@ namespace QuestDetect3D
         public string YawSource;
         /// <summary>Metres added to the top from the 2D box's top edge (depth misses thin top rails).</summary>
         public float TopCorrection;
+        /// <summary>Metres the dense top-band rays raised the top above the grid's p97.</summary>
+        public float TopBandLift;
 
         public override string ToString() =>
             Valid
                 ? $"{Box} pts={ObjectPoints}/{Hits}/{Rays} sup={SupportHits} clu={ClusterFraction:F2} in={InsideFraction:F2} " +
                   $"compl={Completion * 100f:F0}cm σd={SigmaDepth * 100f:F1}cm σpos={SigmaPos * 100f:F1}cm " +
-                  $"σyaw={SigmaYawDeg:F0}° σsize={SigmaSizeRel * 100f:F0}% d={Distance:F2}m floor={UsedFloor} wall={WallPoints} yaw_src={YawSource} top+={TopCorrection * 100f:F0}cm"
+                  $"σyaw={SigmaYawDeg:F0}° σsize={SigmaSizeRel * 100f:F0}% d={Distance:F2}m floor={UsedFloor} wall={WallPoints} yaw_src={YawSource} top+={TopCorrection * 100f:F0}cm band+={TopBandLift * 100f:F0}cm"
                 : $"fail({FailReason}) pts={ObjectPoints}/{Hits}/{Rays}";
     }
 
@@ -253,6 +255,16 @@ namespace QuestDetect3D
             m_tmp.Sort();
             var yLow = Percentile(m_tmp, 0.03f);
             var yTop = Percentile(m_tmp, 0.97f);
+            // Top band (field data 2026-11-15: depth sees backrest tops up to 0.81–0.88 m but the sparse grid
+            // + p97 put tops at ~0.74 m, 12 cm low). Dense rays along the top of the 2D box, kept only if they
+            // land on the object (inside its footprint, at its range); robust max = 2nd highest hit.
+            var bandTop = TopBand(viewport, cam, depth, pts, yTop);
+            if (!float.IsNaN(bandTop) && bandTop > yTop)
+            {
+                r.TopBandLift = bandTop - yTop;
+                yTop = bandTop;
+            }
+
             float bottom;
             if (hasFloor && (info.Support == SupportSurface.Floor ? yLow - floorY < 0.45f : yLow - floorY < 0.10f))
             {
@@ -463,6 +475,64 @@ namespace QuestDetect3D
         }
 
         private const float WallInlier = 0.035f;
+
+        public int TopBandRows = 6;
+        public int TopBandCols = 21;
+
+        /// <summary>
+        /// Dense depth rays in the top 15 % of the 2D box. A hit counts if it lies inside the object's point
+        /// footprint (+5 cm) and within its range span (+15 cm). Returns the 2nd-highest hit (robust max) or NaN.
+        /// </summary>
+        private float TopBand(Rect viewport, in CameraModel cam, IDepthRaycaster depth, List<Vector3> pts, float gridTop)
+        {
+            if (pts.Count < MinPoints)
+            {
+                return float.NaN;
+            }
+
+            float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+            float minR = float.MaxValue, maxR = float.MinValue;
+            foreach (var p in pts)
+            {
+                minX = Mathf.Min(minX, p.x); maxX = Mathf.Max(maxX, p.x);
+                minZ = Mathf.Min(minZ, p.z); maxZ = Mathf.Max(maxZ, p.z);
+                var rr = Vector3.Distance(cam.Position, p);
+                minR = Mathf.Min(minR, rr); maxR = Mathf.Max(maxR, rr);
+            }
+
+            float best = float.NaN, second = float.NaN;
+            for (var i = 0; i < TopBandRows; i++)
+            {
+                var v = viewport.yMax - viewport.height * (-0.02f + 0.22f * (i + (float)m_rng.NextDouble()) / TopBandRows);
+                for (var j = 0; j < TopBandCols; j++)
+                {
+                    var u = viewport.xMin + viewport.width * (0.05f + 0.9f * (j + (float)m_rng.NextDouble()) / TopBandCols);
+                    if (!depth.Raycast(cam.ViewportToRay(new Vector2(u, v)), MaxRange, out var hp, out _))
+                    {
+                        continue;
+                    }
+
+                    var range = Vector3.Distance(cam.Position, hp);
+                    if (hp.x < minX - 0.05f || hp.x > maxX + 0.05f || hp.z < minZ - 0.05f || hp.z > maxZ + 0.05f ||
+                        range < minR - 0.15f || range > maxR + 0.15f || hp.y < gridTop - 0.3f)
+                    {
+                        continue;
+                    }
+
+                    if (float.IsNaN(best) || hp.y > best)
+                    {
+                        second = best;
+                        best = hp.y;
+                    }
+                    else if (float.IsNaN(second) || hp.y > second)
+                    {
+                        second = hp.y;
+                    }
+                }
+            }
+
+            return second;
+        }
 
         /// <summary>
         /// Heading from the backrest: principal axis of the points in the top 25 % of the object's height

@@ -182,7 +182,7 @@ namespace QuestDetect3D
                     }
 
                     var d = HorizontalDistance(a.Estimate.BottomCenter, b.Estimate.BottomCenter);
-                    var depthTracks = a.YawPeriod < 6f && b.YawPeriod < 6f;
+                    var depthTracks = a.BasePeriod < 6f && b.BasePeriod < 6f;
                     var contained = depthTracks &&
                                     (InsideFootprint(a.Estimate.BottomCenter, b.Estimate, 0f) ||
                                      InsideFootprint(b.Estimate.BottomCenter, a.Estimate, 0f));

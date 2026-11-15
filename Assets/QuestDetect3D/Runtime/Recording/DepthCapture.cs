@@ -4,7 +4,10 @@
 //   world = (M⁻¹ · [ndc_x, ndc_y, ndc_z, 1]) / w        with M = reprojection_matrix (world → depth clip space)
 // (Meta's EnvironmentOcclusion.cginc does the forward direction: uv = (clip.xy / clip.w + 1) / 2.)
 //
-// Where the texture comes from: Meta's EnvironmentDepthManager raises an (internal) onDepthTextureUpdate event
+// Where the texture comes from: MRUK's EnvironmentRaycastManager uses Meta's native OpenXR raycast and does NOT
+// create an EnvironmentDepthManager, so this app has no depth texture by default. EnsureManager() creates one for
+// as long as Annotate mode runs (occlusion shaders OFF, so nothing changes visually) and ReleaseManager() disables
+// it again when Annotate mode exits (Detect mode stays as it was). Meta's EnvironmentDepthManager raises an (internal) onDepthTextureUpdate event
 // with the provider's RenderTexture every time a new depth frame arrives; we subscribe to it by reflection. As a
 // fallback the global shader texture _EnvironmentDepthTexture is used. The texture is DEPTH-ONLY (no colour
 // buffer), so it is bound to the compute shader with RenderTextureSubElement.Depth. A Texture2DArray (one slice per
@@ -12,6 +15,7 @@
 // Every failure has a reason (LastError) that the recorder logs and shows on the Record screen.
 using System;
 using System.Reflection;
+using Meta.XR.EnvironmentDepth;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
@@ -49,6 +53,53 @@ namespace QuestDetect3D.Recording
         private Component m_manager;
         private Delegate m_handler;
         private EventInfo m_event;
+        private static EnvironmentDepthManager s_ownManager;
+
+        /// <summary>Makes sure an EnvironmentDepthManager exists and runs (created once, occlusion off). Call while
+        /// Annotate mode is active; returns false (with a reason) when environment depth is not supported.</summary>
+        public static bool EnsureManager(out string reason)
+        {
+            reason = null;
+            if (!EnvironmentDepthManager.IsSupported)
+            {
+                reason = "environment depth not supported on this device / runtime";
+                return false;
+            }
+
+            var manager = s_ownManager != null ? s_ownManager : UnityEngine.Object.FindAnyObjectByType<EnvironmentDepthManager>(FindObjectsInactive.Include);
+            if (manager == null)
+            {
+                var go = new GameObject("QD3D EnvironmentDepthManager (recording)");
+                go.SetActive(false); // configure before OnEnable starts the depth provider
+                manager = go.AddComponent<EnvironmentDepthManager>();
+                manager.OcclusionShadersMode = OcclusionShadersMode.None;
+                manager.RemoveHands = false;
+                s_ownManager = manager;
+                go.SetActive(true);
+                Log.Info("ann_depth_manager_created occlusion=None");
+            }
+            else
+            {
+                if (!manager.gameObject.activeSelf)
+                {
+                    manager.gameObject.SetActive(true);
+                }
+
+                manager.enabled = true;
+            }
+
+            return true;
+        }
+
+        /// <summary>Disables the depth manager this class created (Annotate mode exit), so Detect mode runs as before.</summary>
+        public static void ReleaseManager()
+        {
+            if (s_ownManager != null && s_ownManager.enabled)
+            {
+                s_ownManager.enabled = false;
+                Log.Info("ann_depth_manager_disabled");
+            }
+        }
 
         /// <summary>Loads the compute shader and subscribes to the depth manager's texture updates.</summary>
         public DepthCapture()
@@ -65,6 +116,12 @@ namespace QuestDetect3D.Recording
                 Log.Error("ann_depth_shader_missing Resources/QD3D_DepthCopy.compute");
             }
 
+            if (!EnsureManager(out var why))
+            {
+                LastError = why;
+                Log.Warn($"ann_depth_unavailable {why}");
+            }
+
             Subscribe();
         }
 
@@ -78,7 +135,8 @@ namespace QuestDetect3D.Recording
             var t = CurrentTexture(out var source);
             var matrices = Shader.GetGlobalMatrixArray(ReprojectionId);
             return t == null
-                ? $"source=none event_subscribed={m_handler != null} manager={(m_manager != null)} compute={SystemInfo.supportsComputeShaders}"
+                ? $"source=none event_subscribed={m_handler != null} manager={(m_manager != null)} own_manager={(s_ownManager != null)} " +
+                  $"depth_available={(s_ownManager != null && s_ownManager.IsDepthAvailable)} compute={SystemInfo.supportsComputeShaders}"
                 : $"source={source} size={t.width}x{t.height} dim={t.dimension} volume={t.volumeDepth} color={t.graphicsFormat} " +
                   $"depth={t.depthStencilFormat} created={t.IsCreated()} matrices={(matrices?.Length ?? 0)} compute={SystemInfo.supportsComputeShaders}";
         }
@@ -111,7 +169,9 @@ namespace QuestDetect3D.Recording
             var texture = CurrentTexture(out _);
             if (texture == null)
             {
-                return Fail("no environment depth texture yet (event and global both empty)");
+                return Fail(s_ownManager != null && !s_ownManager.IsDepthAvailable
+                    ? "depth manager running, waiting for the first depth frame (scene permission granted?)"
+                    : "no environment depth texture yet (event and global both empty)");
             }
 
             if (!texture.IsCreated())

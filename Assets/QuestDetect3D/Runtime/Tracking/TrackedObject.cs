@@ -28,6 +28,11 @@ namespace QuestDetect3D
         public float Score;
         /// <summary>Single-frame position uncertainty (m) reported by the box fitter.</summary>
         public float SigmaPos;
+        /// <summary>Hybrid mode: a keypoint model saw the object's front this frame (FrontYaw, full 360°).</summary>
+        public bool HasFront;
+        public float FrontYaw;
+        /// <summary>Hybrid mode: depth verification score in [0,1] (support, free space, agreement); 1 if unused.</summary>
+        public float Verification;
     }
 
     public sealed class TrackedObject
@@ -44,6 +49,11 @@ namespace QuestDetect3D
         public readonly CategoryGroup Group;
         /// <summary>Yaw period (radians) of this track's detector: 2π for keypoint fits, π/2 for depth boxes.</summary>
         public float YawPeriod = 2f * Mathf.PI;
+        /// <summary>Period the shape is estimated with (π/2 for depth boxes). YawPeriod becomes 2π once the front is known.</summary>
+        public float BasePeriod { get; private set; } = 2f * Mathf.PI;
+        /// <summary>Hybrid: front resolved from keypoint observations (fraction of their weight that agrees).</summary>
+        public bool FrontKnown;
+        public float FrontAgreement;
         private readonly float[] m_votes = new float[32];
         public readonly List<BoxObservation> Observations = new List<BoxObservation>(MaxObservations);
 
@@ -76,6 +86,7 @@ namespace QuestDetect3D
             Category = category;
             Group = Categories.Get(category).Group;
             YawPeriod = Mathf.Clamp(yawPeriodDeg, 90f, 360f) * Mathf.Deg2Rad;
+            BasePeriod = YawPeriod;
             CreatedTime = now;
             LastSeenTime = now;
         }
@@ -200,7 +211,7 @@ namespace QuestDetect3D
                 return;
             }
 
-            var period = Mathf.Min(YawPeriod, info.YawSymmetric180 ? Mathf.PI : 2f * Mathf.PI);
+            var period = Mathf.Min(BasePeriod, info.YawSymmetric180 ? Mathf.PI : 2f * Mathf.PI);
             var weights = new float[n];
             var sumW = 0f;
             for (var i = 0; i < n; i++)
@@ -306,6 +317,56 @@ namespace QuestDetect3D
             InlierFraction = sumIn / sumW;
             ViewSpreadDeg = ViewSpread(inlier);
 
+            // Hybrid: shape (yaw mod 90°) from all observations, front quadrant voted by keypoint observations.
+            FrontKnown = false;
+            if (period < 6f)
+            {
+                var votes = new float[4];
+                var total = 0f;
+                for (var i = 0; i < n; i++)
+                {
+                    var o = Observations[i];
+                    if (!inlier[i] || !o.HasFront)
+                    {
+                        continue;
+                    }
+
+                    var w = weights[i];
+                    total += w;
+                    for (var k = 0; k < 4; k++)
+                    {
+                        if (Mathf.Abs(Mathf.DeltaAngle(o.FrontYaw * Mathf.Rad2Deg, (meanYaw + k * 0.5f * Mathf.PI) * Mathf.Rad2Deg)) < 45f)
+                        {
+                            votes[k] += w;
+                        }
+                    }
+                }
+
+                var bestK = 0;
+                for (var k = 1; k < 4; k++)
+                {
+                    if (votes[k] > votes[bestK])
+                    {
+                        bestK = k;
+                    }
+                }
+
+                if (total > 0f)
+                {
+                    FrontAgreement = votes[bestK] / total;
+                    if (FrontAgreement >= 0.6f && total >= 1.5f * meanQualityFloor(weights, inlier))
+                    {
+                        FrontKnown = true;
+                        meanYaw += bestK * 0.5f * Mathf.PI;
+                        if ((bestK & 1) == 1)
+                        {
+                            size = new Vector3(size.z, size.y, size.x);
+                        }
+                    }
+                }
+            }
+
+            YawPeriod = FrontKnown ? 2f * Mathf.PI : BasePeriod;
             Estimate = new UprightBox(pos, meanYaw, size);
 
             // Expected metric error of the fused centre: statistical part + floor-height part
@@ -317,6 +378,23 @@ namespace QuestDetect3D
             ConfidenceDetail = ConfidenceModel.TrackConfidence(
                 sumIn, meanQuality, PositionSigma, YawSigmaDeg, SizeSigmaRel, InlierFraction, ViewSpreadDeg, Misses, nEff);
             Confidence = ConfidenceDetail.Total;
+        }
+
+        /// <summary>Weight of ~2 typical inlier observations: front needs at least that much keypoint evidence.</summary>
+        private float meanQualityFloor(float[] weights, bool[] mask)
+        {
+            float sum = 0f;
+            var cnt = 0;
+            for (var i = 0; i < weights.Length; i++)
+            {
+                if (mask[i])
+                {
+                    sum += weights[i];
+                    cnt++;
+                }
+            }
+
+            return cnt > 0 ? sum / cnt : 0f;
         }
 
         private Vector3 WeightedMean(float[] weights, bool[] mask)

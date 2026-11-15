@@ -18,6 +18,8 @@ namespace QuestDetect3D
         YoloDepth,
         /// <summary>MediaPipe Objectron chair keypoints + box solver (v2 baseline).</summary>
         Objectron,
+        /// <summary>YOLO finds chairs, Objectron keypoints on a crop of each YOLO box give the front, depth verifies.</summary>
+        Hybrid,
     }
 
     public enum AppMode
@@ -65,7 +67,7 @@ namespace QuestDetect3D
             {
                 Mode = (DisplayMode)Mathf.Clamp(PlayerPrefs.GetInt(KeyMode, (int)DisplayMode.Box), 0, 1),
                 MinConfidence = PlayerPrefs.GetFloat(KeyMinConf, DefaultMinConfidence),
-                Detector = (DetectorKind)Mathf.Clamp(PlayerPrefs.GetInt(KeyDetector, 0), 0, 1),
+                Detector = (DetectorKind)Mathf.Clamp(PlayerPrefs.GetInt(KeyDetector, 0), 0, 2),
                 Backend = (InferenceBackend)Mathf.Clamp(PlayerPrefs.GetInt(KeyBackend, 0), 0, 1),
                 AppMode = (AppMode)Mathf.Clamp(PlayerPrefs.GetInt(KeyAppMode, 0), 0, 1),
             };
